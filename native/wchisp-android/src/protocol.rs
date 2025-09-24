@@ -4,6 +4,10 @@
 
 use anyhow::Result;
 use scroll::{Pwrite, LE};
+use log::{debug, error};
+use crate::transport::AndroidUsbTransport;
+use jni::JNIEnv;
+use std::time::Duration;
 
 /// ISP Command types
 #[repr(u8)]
@@ -159,6 +163,7 @@ impl Command {
         raw.push(0x00); // Reserved byte
         raw.extend_from_slice(&self.payload);
         
+        debug!("Command packet: {} bytes", raw.len());
         Ok(raw)
     }
 }
@@ -167,6 +172,7 @@ impl Response {
     /// Parse response from raw bytes
     pub fn from_raw(raw: &[u8]) -> Result<Self> {
         if raw.len() < 4 {
+            error!("Response too short: {} bytes", raw.len());
             return Err(anyhow::anyhow!("Response too short"));
         }
 
@@ -182,17 +188,25 @@ impl Response {
             0xa9 => CommandType::DataErase,
             0xaa => CommandType::DataProgram,
             0xab => CommandType::DataRead,
-            _ => return Err(anyhow::anyhow!("Unknown command type: 0x{:02x}", raw[0])),
+            _ => {
+                error!("Unknown command type: 0x{:02x}", raw[0]);
+                return Err(anyhow::anyhow!("Unknown command type: 0x{:02x}", raw[0]));
+            }
         };
 
         let payload_len = raw[1] as usize;
         let status = raw[2];
         
         if raw.len() < 4 + payload_len {
+            error!("Incomplete response payload: expected {}, got {}", 
+                   4 + payload_len, raw.len());
             return Err(anyhow::anyhow!("Incomplete response payload"));
         }
 
         let payload = raw[4..4 + payload_len].to_vec();
+
+        debug!("Response parsed: type=0x{:02x}, status=0x{:02x}, payload_len={}", 
+               raw[0], status, payload_len);
 
         Ok(Self {
             cmd_type,
@@ -209,3 +223,97 @@ impl Response {
         &self.payload
     }
 }
+
+/// Protocol handler for WCH ISP communication
+pub struct ProtocolHandler;
+
+impl ProtocolHandler {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    /// Send a command and receive response through transport layer
+    pub fn transfer(
+        &self,
+        transport: &mut AndroidUsbTransport,
+        env: &JNIEnv,
+        cmd: Command
+    ) -> Result<Response> {
+        self.transfer_with_timeout(transport, env, cmd, Duration::from_millis(1000))
+    }
+    
+    /// Send a command with custom timeout
+    pub fn transfer_with_timeout(
+        &self,
+        transport: &mut AndroidUsbTransport,
+        env: &JNIEnv,
+        cmd: Command,
+        timeout: Duration
+    ) -> Result<Response> {
+        let cmd_type = cmd.cmd_type;
+        let req = cmd.into_raw()?;
+        
+        debug!("Sending command: type=0x{:02x}, len={}", cmd_type as u8, req.len());
+        
+        // Send command
+        let bytes_sent = transport.send_raw(env, &req)?;
+        if bytes_sent != req.len() {
+            error!("Incomplete send: sent {} of {} bytes", bytes_sent, req.len());
+            return Err(anyhow::anyhow!("Incomplete command send"));
+        }
+        
+        // Small delay to ensure command is processed
+        std::thread::sleep(Duration::from_micros(100));
+        
+        // Receive response
+        let resp_data = transport.recv_raw(env, timeout)?;
+        if resp_data.is_empty() {
+            error!("No response received");
+            return Err(anyhow::anyhow!("No response received"));
+        }
+        
+        let response = Response::from_raw(&resp_data)?;
+        
+        // Verify response matches command
+        if std::mem::discriminant(&response.cmd_type) != std::mem::discriminant(&cmd_type) {
+            error!("Response command type mismatch: expected {:?}, got {:?}", 
+                   cmd_type, response.cmd_type);
+            return Err(anyhow::anyhow!("Response command type mismatch"));
+        }
+        
+        debug!("Command completed successfully");
+        Ok(response)
+    }
+    
+    /// Perform chip identification
+    pub fn identify_chip(
+        &self,
+        transport: &mut AndroidUsbTransport,
+        env: &JNIEnv
+    ) -> Result<(u8, u8)> {
+        debug!("Identifying chip");
+        
+        let identify_cmd = Command::identify(0, 0);
+        let response = self.transfer(transport, env, identify_cmd)?;
+        
+        if !response.is_ok() {
+            error!("Chip identification failed with status: 0x{:02x}", response.status);
+            return Err(anyhow::anyhow!("Chip identification failed"));
+        }
+        
+        if response.payload().len() < 2 {
+            error!("Invalid identification response length: {}", response.payload().len());
+            return Err(anyhow::anyhow!("Invalid identification response"));
+        }
+        
+        let chip_id = response.payload()[0];
+        let device_type = response.payload()[1];
+        
+        debug!("Chip identified: ID=0x{:02x}, Type=0x{:02x}", chip_id, device_type);
+        Ok((chip_id, device_type))
+    }
+}
+
+/// Constants for configuration register masks
+pub const CFG_MASK_ALL: u32 = 0x1F;
+pub const CFG_MASK_RDPR_USER_DATA_WPR: u32 = 0x07;

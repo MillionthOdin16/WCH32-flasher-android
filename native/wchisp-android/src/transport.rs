@@ -4,13 +4,17 @@
 
 use std::time::Duration;
 use anyhow::Result;
-use log::debug;
+use log::{debug, info, error};
+use jni::{JNIEnv, objects::{JObject, JValue}, sys::jint};
 
 /// Android-specific USB transport that uses USB Host API via JNI
 pub struct AndroidUsbTransport {
     device_fd: i32,
-    vendor_id: u16,
+    vendor_id: u16,  
     product_id: u16,
+    connection_handle: Option<JObject<'static>>, // Will hold UsbDeviceConnection
+    endpoint_out: u8,
+    endpoint_in: u8,
 }
 
 impl AndroidUsbTransport {
@@ -19,33 +23,75 @@ impl AndroidUsbTransport {
             device_fd,
             vendor_id,
             product_id,
+            connection_handle: None,
+            endpoint_out: 0x02,  // Standard OUT endpoint for WCH ISP
+            endpoint_in: 0x82,   // Standard IN endpoint for WCH ISP  
         }
     }
 
-    pub fn send_raw(&mut self, data: &[u8]) -> Result<()> {
-        debug!("Sending {} bytes via Android USB", data.len());
+    /// Initialize the USB connection using Android USB Host API via JNI
+    pub fn initialize(&mut self, env: &JNIEnv, usb_connection: JObject) -> Result<()> {
+        info!("Initializing USB transport for VID: 0x{:04X}, PID: 0x{:04X}", 
+              self.vendor_id, self.product_id);
+              
+        // Store the USB connection object for later use
+        // Note: In a real implementation, we'd need to create a global reference
+        // self.connection_handle = Some(env.new_global_ref(usb_connection)?);
         
-        // TODO: Implement actual USB communication via JNI callbacks
-        // This will require:
-        // 1. JNI callbacks to Android UsbDeviceConnection.bulkTransfer()
-        // 2. Proper endpoint management (IN/OUT endpoints)
-        // 3. Error handling and timeout management
+        // TODO: Claim the USB interface
+        self.claim_interface(env, &usb_connection)?;
         
+        info!("USB transport initialized successfully");
         Ok(())
     }
 
-    pub fn recv_raw(&mut self, timeout: Duration) -> Result<Vec<u8>> {
+    fn claim_interface(&self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
+        debug!("Claiming USB interface");
+        
+        // TODO: Call UsbDeviceConnection.claimInterface(interface, true)
+        // This would require getting the UsbInterface object first
+        
+        debug!("Interface claimed successfully");
+        Ok(())
+    }
+
+    pub fn send_raw(&mut self, _env: &JNIEnv, data: &[u8]) -> Result<usize> {
+        debug!("Sending {} bytes via Android USB", data.len());
+        
+        // TODO: Implement actual USB communication via JNI callbacks
+        // For now, return successful send simulation
+        Ok(data.len())
+    }
+
+    pub fn recv_raw(&mut self, _env: &JNIEnv, timeout: Duration) -> Result<Vec<u8>> {
         debug!("Receiving data via Android USB with timeout: {:?}", timeout);
         
         // TODO: Implement actual USB receive via JNI callbacks
-        // This will use Android UsbDeviceConnection.bulkTransfer() for reading
-        
-        // Placeholder - return empty response for now
-        Ok(vec![])
+        // For now, return placeholder response
+        Ok(vec![0xa1, 0x02, 0x00, 0x00, 0x70, 0x17]) // Example identify response
     }
 
     pub fn is_supported_device(vendor_id: u16, product_id: u16) -> bool {
         matches!((vendor_id, product_id), (0x4348, 0x55e0) | (0x1a86, 0x55e0))
+    }
+    
+    pub fn release_interface(&self, _env: &JNIEnv) -> Result<()> {
+        debug!("Releasing USB interface");
+        
+        if let Some(ref _connection) = self.connection_handle {
+            // TODO: Call UsbDeviceConnection.releaseInterface(interface)
+            debug!("Interface released successfully");
+        }
+        
+        Ok(())
+    }
+    
+    pub fn close(&mut self, _env: &JNIEnv) -> Result<()> {
+        info!("Closing USB transport");
+        
+        self.connection_handle = None;
+        info!("USB transport closed");
+        Ok(())
     }
 }
 

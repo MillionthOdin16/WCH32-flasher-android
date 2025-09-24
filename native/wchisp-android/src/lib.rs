@@ -3,19 +3,26 @@
 //! This native library provides JNI bindings for the WCH ISP functionality,
 //! replacing libusb dependencies with Android USB Host API integration.
 
-use jni::objects::{JClass, JByteArray};
+use jni::objects::{JClass, JByteArray, JObject};
 use jni::sys::{jint, jstring, jbyteArray, jboolean};
 use jni::JNIEnv;
 use log::{info, error};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 pub mod transport;
 pub mod device;
 pub mod protocol;
 pub mod flashing;
 
-// TODO: Uncomment when modules are fully implemented
-// use crate::transport::AndroidUsbTransport;
-// use crate::flashing::AndroidFlashing;
+use crate::transport::AndroidUsbTransport;
+use crate::flashing::AndroidFlashing;
+
+// Global state management for device handles
+lazy_static::lazy_static! {
+    static ref FLASHER_INSTANCES: Mutex<HashMap<i32, AndroidFlashing>> = Mutex::new(HashMap::new());
+    static ref NEXT_HANDLE: Mutex<i32> = Mutex::new(1);
+}
 
 /// Initialize the native library and logging
 #[no_mangle]
@@ -37,35 +44,80 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_init(
 /// Open USB device connection using Android USB Host API
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_openDevice(
-    _env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     device_fd: jint,
     vendor_id: jint,
     product_id: jint,
+    usb_connection: JObject,
 ) -> jint {
     info!("Opening USB device with FD: {}, VID: 0x{:04X}, PID: 0x{:04X}", 
           device_fd, vendor_id as u16, product_id as u16);
     
-    // TODO: Create AndroidUsbTransport instance and store handle
-    // For now, return a placeholder handle
-    1 // Success, return handle ID
+    // Validate that this is a supported device
+    if !AndroidUsbTransport::is_supported_device(vendor_id as u16, product_id as u16) {
+        error!("Unsupported device: VID=0x{:04X}, PID=0x{:04X}", vendor_id, product_id);
+        return -1;
+    }
+    
+    // Create transport and flashing instances
+    let transport = AndroidUsbTransport::new(device_fd, vendor_id as u16, product_id as u16);
+    let mut flasher = match AndroidFlashing::new(transport) {
+        Ok(f) => f,
+        Err(e) => {
+            error!("Failed to create flasher: {}", e);
+            return -1;
+        }
+    };
+    
+    // Initialize the flasher with the USB connection
+    if let Err(e) = flasher.initialize(&env, usb_connection) {
+        error!("Failed to initialize flasher: {}", e);
+        return -1;
+    }
+    
+    // Generate a handle and store the instance
+    let handle = {
+        let mut next_handle = NEXT_HANDLE.lock().unwrap();
+        let handle = *next_handle;
+        *next_handle += 1;
+        handle
+    };
+    
+    {
+        let mut instances = FLASHER_INSTANCES.lock().unwrap();
+        instances.insert(handle, flasher);
+    }
+    
+    info!("Device opened successfully with handle: {}", handle);
+    handle
 }
 
 /// Close USB device connection
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_closeDevice(
-    _env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jint,
 ) -> jboolean {
     info!("Closing device handle: {}", handle);
     
-    // TODO: Close transport and clean up resources
-    true as jboolean
+    let mut instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(mut flasher) = instances.remove(&handle) {
+        if let Err(e) = flasher.close(&env) {
+            error!("Error closing flasher: {}", e);
+            return false as jboolean;
+        }
+        info!("Device closed successfully");
+        true as jboolean
+    } else {
+        error!("Invalid device handle: {}", handle);
+        false as jboolean
+    }
 }
 
 /// Identify connected chip
-#[no_mangle]
+#[no_mangle] 
 pub extern "C" fn Java_com_wch_flasher_WchispNative_identifyChip(
     env: JNIEnv,
     _class: JClass,
@@ -73,16 +125,19 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_identifyChip(
 ) -> jstring {
     info!("Identifying chip on handle: {}", handle);
     
-    // TODO: Implement chip identification via AndroidFlashing
-    // For now, return placeholder chip info
-    let chip_info = "CH32V307VCT6[0x7017] (Code Flash: 256KiB)";
-    
-    match env.new_string(chip_info) {
-        Ok(jstr) => jstr.into_raw(),
-        Err(e) => {
-            error!("Failed to create Java string: {}", e);
-            std::ptr::null_mut()
+    let instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(flasher) = instances.get(&handle) {
+        let chip_info = flasher.get_chip_info();
+        match env.new_string(chip_info) {
+            Ok(jstr) => jstr.into_raw(),
+            Err(e) => {
+                error!("Failed to create Java string: {}", e);
+                std::ptr::null_mut()
+            }
         }
+    } else {
+        error!("Invalid device handle: {}", handle);
+        std::ptr::null_mut()
     }
 }
 
@@ -111,24 +166,54 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_flashFirmware(
     
     info!("Firmware size: {} bytes", firmware.len());
     
-    // TODO: Implement actual flashing via AndroidFlashing
-    // This is a placeholder implementation
-    
-    true as jboolean
+    let mut instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(flasher) = instances.get_mut(&handle) {
+        match flasher.flash_firmware(&env, &firmware) {
+            Ok(()) => {
+                info!("Firmware flash completed successfully");
+                true as jboolean
+            }
+            Err(e) => {
+                error!("Firmware flash failed: {}", e);
+                false as jboolean
+            }
+        }
+    } else {
+        error!("Invalid device handle: {}", handle);  
+        false as jboolean
+    }
 }
 
 /// Erase chip flash memory
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_eraseChip(
-    _env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jint,
 ) -> jboolean {
     info!("Erasing chip on handle: {}", handle);
     
-    // TODO: Implement chip erase via AndroidFlashing
-    
-    true as jboolean
+    let mut instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(flasher) = instances.get_mut(&handle) {
+        // Calculate sectors to erase (full chip)
+        let chip = flasher.get_chip();
+        let sector_size = chip.sector_size();
+        let sectors = (chip.flash_size + sector_size - 1) / sector_size;
+        
+        match flasher.erase_flash(&env, sectors) {
+            Ok(()) => {
+                info!("Chip erase completed successfully");
+                true as jboolean
+            }
+            Err(e) => {
+                error!("Chip erase failed: {}", e);
+                false as jboolean
+            }
+        }
+    } else {
+        error!("Invalid device handle: {}", handle);
+        false as jboolean
+    }
 }
 
 /// Verify firmware on the chip
@@ -153,9 +238,22 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_verifyFirmware(
         }
     };
     
-    // TODO: Implement verification via AndroidFlashing
-    
-    true as jboolean
+    let mut instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(flasher) = instances.get_mut(&handle) {
+        match flasher.verify_firmware(&env, &firmware) {
+            Ok(()) => {
+                info!("Firmware verification completed successfully");
+                true as jboolean
+            }
+            Err(e) => {
+                error!("Firmware verification failed: {}", e);
+                false as jboolean
+            }
+        }
+    } else {
+        error!("Invalid device handle: {}", handle);
+        false as jboolean
+    }
 }
 
 /// Reset the chip
@@ -167,9 +265,22 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_resetChip(
 ) -> jboolean {
     info!("Resetting chip on handle: {}", handle);
     
-    // TODO: Implement chip reset via AndroidFlashing
-    
-    true as jboolean
+    let mut instances = FLASHER_INSTANCES.lock().unwrap();
+    if let Some(flasher) = instances.get_mut(&handle) {
+        match flasher.reset_chip(&env) {
+            Ok(()) => {
+                info!("Chip reset completed successfully");
+                true as jboolean
+            }
+            Err(e) => {
+                error!("Chip reset failed: {}", e);
+                false as jboolean
+            }
+        }
+    } else {
+        error!("Invalid device handle: {}", handle);
+        false as jboolean
+    }
 }
 
 /// Get last error message
@@ -178,7 +289,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_getLastError(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    // TODO: Implement proper error handling
+    // TODO: Implement proper error handling with thread-local storage
     let error_msg = "No error";
     
     match env.new_string(error_msg) {

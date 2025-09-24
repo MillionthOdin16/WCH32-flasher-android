@@ -8,7 +8,7 @@ name = "wchisp_android"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Core WCH ISP functionality (will be extracted from wchisp)
+# Core WCH ISP functionality (adapted from wchisp)
 anyhow = "1.0"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -31,6 +31,12 @@ android_logger = "0.13"
 
 # Serialization for data transfer
 bincode = "1.3"
+
+# Random number generation for encryption padding
+rand = "0.8"
+
+# Global state management
+lazy_static = "1.4"
 
 [features]
 default = []

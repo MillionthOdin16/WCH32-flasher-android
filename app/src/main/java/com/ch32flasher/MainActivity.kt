@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Initialize UI elements
         deviceInfoText = findViewById(R.id.device_info_text)
         selectFileButton = findViewById(R.id.select_file_button)
         firmwareInfoText = findViewById(R.id.firmware_info_text)
@@ -44,9 +45,11 @@ class MainActivity : AppCompatActivity() {
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
 
+        // Register a broadcast receiver to handle USB permission requests.
         val permissionFilter = IntentFilter(ACTION_USB_PERMISSION)
         registerReceiver(usbPermissionReceiver, permissionFilter)
 
+        // Set up the click listener for the "Select Firmware File" button.
         selectFileButton.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
             intent.addCategory(Intent.CATEGORY_OPENABLE)
@@ -72,6 +75,9 @@ class MainActivity : AppCompatActivity() {
         checkForUsbDevice()
     }
 
+    /**
+     * Handles the result of the file selection activity.
+     */
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == FILE_SELECT_CODE && resultCode == Activity.RESULT_OK) {
@@ -84,6 +90,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Checks for connected USB devices and requests permission if a device is found.
+     */
     private fun checkForUsbDevice() {
         val deviceList: HashMap<String, UsbDevice> = usbManager.deviceList
         if (deviceList.isNotEmpty()) {
@@ -97,6 +106,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Requests permission to access the given USB device.
+     */
     private fun requestUsbPermission(device: UsbDevice) {
         val permissionIntent = PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE)
         usbManager.requestPermission(device, permissionIntent)
@@ -123,11 +135,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Sends raw data to the USB device. This method is called from the native Rust code.
+     */
     fun sendRaw(data: ByteArray): Int {
         val endpoint = usbDevice?.getInterface(0)?.getEndpoint(1)
         return usbConnection?.bulkTransfer(endpoint, data, data.size, 5000) ?: -1
     }
 
+    /**
+     * Receives raw data from the USB device. This method is called from the native Rust code.
+     */
     fun recvRaw(size: Int): ByteArray {
         val endpoint = usbDevice?.getInterface(0)?.getEndpoint(0)
         val buffer = ByteArray(size)
@@ -139,8 +157,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Calls the native Rust code to flash the firmware to the device.
+     *
+     * @param activity The MainActivity instance.
+     * @param firmware The firmware to flash.
+     * @return An error message if flashing fails, or null if it succeeds.
+     */
     private external fun nativeFlash(activity: MainActivity, firmware: ByteArray): String?
 
+    /**
+     * Logs a message to the on-screen log view. This method is called from the native Rust code.
+     *
+     * @param message The message to log.
+     */
     fun logMessage(message: String) {
         runOnUiThread {
             logText.append(message + "\n")

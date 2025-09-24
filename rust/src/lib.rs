@@ -14,7 +14,6 @@ pub use self::protocol::{Command, Response};
 pub use self::transport::{AndroidTransport, Baudrate, Transport};
 
 use crate::android_logger::AndroidLogger;
-use crate::android_logger::AndroidLogger;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jbyteArray, jstring};
 use jni::JNIEnv;

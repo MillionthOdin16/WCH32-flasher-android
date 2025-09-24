@@ -7,8 +7,7 @@ repository = "https://github.com/ch32-rs/wchisp"
 documentation = "https://docs.rs/wchisp/"
 homepage = "https://github.com/ch32-rs/wchisp"
 categories = ["embedded", "command-line-utilities", "command-line-utilities"]
-description = "A command-line implementation of WCHISPTool, for flashing ch32 MC
-Us"
+description = "A command-line implementation of WCHISPTool, for flashing ch32 MCUs"
 keywords = ["wch", "cli", "ch32", "embedded"]
 readme = "README.md"
 license = "GPL-2.0"

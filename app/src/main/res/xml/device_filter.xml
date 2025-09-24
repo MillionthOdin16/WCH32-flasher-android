@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CH32 bootloader -->
+    <usb-device vendor-id="6790" product-id="29987" />
+    <!-- WCH USB to serial adapter -->
+    <usb-device vendor-id="6790" product-id="21795" />
+</resources>

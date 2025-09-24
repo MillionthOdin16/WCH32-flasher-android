@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.wch.flasher"
-    compileSdk = 34
+    compileSdk = 35  // Updated for Android 16 compatibility
 
     defaultConfig {
         applicationId = "com.wch.flasher"
         minSdk = 21  // Updated to satisfy AndroidX library requirements (Android 5.0+)
-        targetSdk = 34
+        targetSdk = 35  // Updated for Android 16 compatibility
         versionCode = 1
         versionName = "1.0"
 

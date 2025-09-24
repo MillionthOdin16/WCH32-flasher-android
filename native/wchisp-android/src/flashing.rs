@@ -26,14 +26,14 @@ impl AndroidFlashing {
         Ok(Self {
             transport,
             protocol: ProtocolHandler::new(),
-            chip: Chip::placeholder(), // Will be updated after identification
+            chip: Chip::ch32v307(), // Default to CH32V307, updated after identification
             chip_uid: vec![],
             bootloader_version: [0; 4],
             code_flash_protected: false,
         })
     }
 
-    pub fn initialize(&mut self, env: &JNIEnv, usb_connection: jni::objects::JObject) -> Result<()> {
+    pub fn initialize(&mut self, env: &mut JNIEnv, usb_connection: JObject) -> Result<()> {
         info!("Initializing flashing interface");
         
         // Initialize the USB transport

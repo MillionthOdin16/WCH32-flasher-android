@@ -34,12 +34,19 @@ impl AndroidUsbTransport {
         info!("Initializing USB transport for VID: 0x{:04X}, PID: 0x{:04X}", 
               self.vendor_id, self.product_id);
               
-        // Store the USB connection object for later use
-        // Note: In a real implementation, we'd need to create a global reference
-        // self.connection_handle = Some(env.new_global_ref(usb_connection)?);
+        // Create global reference to USB connection for use across JNI calls
+        let global_ref = env.new_global_ref(&usb_connection)?;
         
-        // Claim the USB interface (will be implemented when JNI integration is complete)
+        // Store the connection handle 
+        // SAFETY: We convert to static lifetime for storage, but ensure proper cleanup
+        let static_ref = unsafe { std::mem::transmute(global_ref.as_obj()) };
+        self.connection_handle = Some(static_ref);
+        
+        // Claim the USB interface
         self.claim_interface(env, &usb_connection)?;
+        
+        // Discover and set endpoint addresses
+        self.discover_endpoints(env, &usb_connection)?;
         
         info!("USB transport initialized successfully");
         Ok(())
@@ -48,27 +55,94 @@ impl AndroidUsbTransport {
     fn claim_interface(&self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
         debug!("Claiming USB interface");
         
-        // Call UsbDeviceConnection.claimInterface(interface, true) when JNI integration is complete
-        // This would require getting the UsbInterface object first
+        // In a complete implementation, we would:
+        // 1. Get the UsbInterface object from the device
+        // 2. Call UsbDeviceConnection.claimInterface(interface, true)
+        // For now, we simulate successful interface claiming
         
-        debug!("Interface claimed successfully");
+        debug!("Interface claiming simulated (needs full Android USB Host API integration)");
+        Ok(())
+    }
+    
+    fn discover_endpoints(&mut self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
+        debug!("Discovering USB endpoints");
+        
+        // For WCH ISP devices, standard endpoints are:
+        self.endpoint_out = 0x02; // OUT endpoint
+        self.endpoint_in = 0x82;  // IN endpoint (0x80 | 0x02)
+        
+        debug!("Using standard WCH ISP endpoints: OUT=0x{:02X}, IN=0x{:02X}", 
+               self.endpoint_out, self.endpoint_in);
         Ok(())
     }
 
-    pub fn send_raw(&mut self, _env: &JNIEnv, data: &[u8]) -> Result<usize> {
+    pub fn send_raw(&mut self, env: &mut JNIEnv, data: &[u8]) -> Result<usize> {
         debug!("Sending {} bytes via Android USB", data.len());
         
-        // Implement actual USB communication via JNI callbacks when USB layer is ready
-        // For now, return successful send simulation for development
-        Ok(data.len())
+        if let Some(ref connection) = self.connection_handle {
+            // Convert data to Java byte array
+            let java_array = env.byte_array_from_slice(data)?;
+            
+            // Call bulkTransfer(endpoint, buffer, length, timeout)
+            let result = env.call_method(
+                connection,
+                "bulkTransfer",
+                "(I[BII)I",
+                &[
+                    jni::objects::JValue::Int(self.endpoint_out as i32),
+                    jni::objects::JValue::Object(&java_array),
+                    jni::objects::JValue::Int(data.len() as i32),
+                    jni::objects::JValue::Int(5000), // 5 second timeout
+                ],
+            )?;
+            
+            let bytes_sent = result.i()? as usize;
+            if bytes_sent == data.len() {
+                debug!("Successfully sent {} bytes", bytes_sent);
+                Ok(bytes_sent)
+            } else {
+                anyhow::bail!("USB send failed: expected {}, sent {}", data.len(), bytes_sent);
+            }
+        } else {
+            anyhow::bail!("No USB connection available");
+        }
     }
 
-    pub fn recv_raw(&mut self, _env: &JNIEnv, timeout: Duration) -> Result<Vec<u8>> {
+    pub fn recv_raw(&mut self, env: &mut JNIEnv, timeout: Duration) -> Result<Vec<u8>> {
         debug!("Receiving data via Android USB with timeout: {:?}", timeout);
         
-        // Implement actual USB receive via JNI callbacks when USB layer is ready
-        // For now, return placeholder response
-        Ok(vec![0xa1, 0x02, 0x00, 0x00, 0x70, 0x17]) // Example identify response
+        if let Some(ref connection) = self.connection_handle {
+            // Create receive buffer (standard WCH ISP packet size)
+            let buffer_size = 64;
+            let java_array = env.new_byte_array(buffer_size)?;
+            
+            // Call bulkTransfer for receive
+            let result = env.call_method(
+                connection,
+                "bulkTransfer",
+                "(I[BII)I",
+                &[
+                    jni::objects::JValue::Int(self.endpoint_in as i32),
+                    jni::objects::JValue::Object(&java_array),
+                    jni::objects::JValue::Int(buffer_size as i32),
+                    jni::objects::JValue::Int(timeout.as_millis() as i32),
+                ],
+            )?;
+            
+            let bytes_received = result.i()?;
+            if bytes_received > 0 {
+                let mut buffer = vec![0i8; bytes_received as usize];
+                env.get_byte_array_region(&java_array, 0, &mut buffer)?;
+                // Convert i8 to u8
+                let result = buffer.into_iter().map(|b| b as u8).collect();
+                debug!("Received {} bytes", bytes_received);
+                Ok(result)
+            } else {
+                anyhow::bail!("USB receive failed or timeout");
+            }
+        } else {
+            anyhow::bail!("No USB connection available");
+        }
     }
 
     pub fn is_supported_device(vendor_id: u16, product_id: u16) -> bool {

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WCH32 Flasher</string>
+    <string name="select_firmware">Select Firmware File</string>
+    <string name="flash_firmware">Flash Firmware</string>
+    <string name="device_info">Device Info</string>
+    <string name="flash_log">Flash Log</string>
+    <string name="no_device_connected">No WCH device connected</string>
+    <string name="device_connected">Device connected: %1$s</string>
+    <string name="flash_progress">Flashing... %1$d%%</string>
+    <string name="flash_success">Flash completed successfully</string>
+    <string name="flash_error">Flash error: %1$s</string>
+    <string name="file_select_error">Error selecting file</string>
+    <string name="usb_permission_required">USB permission required</string>
+    <string name="reset_device">Reset Device</string>
+    <string name="erase_chip">Erase Chip</string>
+    <string name="verify_firmware">Verify</string>
+</resources>

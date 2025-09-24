@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WCH ISP devices filter as per wchisp documentation -->
+    <!-- VID: 0x4348 (WCH) and 0x1a86 (QinHeng Electronics), PID: 0x55e0 -->
+    <usb-device vendor-id="17224" product-id="21984" /> <!-- 0x4348:0x55e0 WCH -->
+    <usb-device vendor-id="6790" product-id="21984" />  <!-- 0x1a86:0x55e0 QinHeng -->
+</resources>

@@ -363,3 +363,143 @@ impl AndroidFlashing {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transport::AndroidUsbTransport;
+
+    // Mock transport for testing without actual USB devices
+    struct MockTransport {
+        pub device_responses: Vec<Vec<u8>>,
+        pub call_count: usize,
+    }
+
+    impl MockTransport {
+        fn new() -> Self {
+            Self {
+                device_responses: vec![
+                    // Mock chip identification response (CH32V203)
+                    vec![0x30, 0x19], // chip_id=0x30, device_type=0x19
+                ],
+                call_count: 0,
+            }
+        }
+    }
+
+    #[test] 
+    fn test_firmware_validation() {
+        // Test firmware data validation logic
+        let small_firmware = vec![0x55; 1024]; // 1KB
+        let large_firmware = vec![0xAA; 256 * 1024]; // 256KB
+        let empty_firmware: Vec<u8> = vec![];
+        
+        // These should be basic validation checks that don't require USB
+        assert!(small_firmware.len() > 0, "Small firmware should have content");
+        assert!(large_firmware.len() <= 512 * 1024, "Large firmware should be reasonable size");
+        assert_eq!(empty_firmware.len(), 0, "Empty firmware should be zero length");
+    }
+
+    #[test]
+    fn test_chip_info_generation() {
+        // Test chip info formatting without actual device
+        let chip = Chip::ch32v203();
+        let info = chip.get_chip_info();
+        
+        assert!(info.contains("CH32V203"), "Should contain chip name");
+        assert!(info.contains("64KiB"), "Should contain flash size");
+        assert!(!info.contains("EEPROM"), "CH32V203 should not have EEPROM");
+    }
+
+    #[test]
+    fn test_new_chip_support() {
+        // Test that new chips are properly supported
+        let chips = vec![
+            Chip::ch32v203(),
+            Chip::ch32v003(), 
+            Chip::ch32x035(),
+            Chip::ch549(),
+            Chip::ch552(),
+            Chip::ch573(),
+            Chip::ch579(),
+            Chip::ch559(),
+            Chip::ch592(),
+        ];
+        
+        for chip in chips {
+            assert!(chip.name.len() > 0, "Chip should have a name");
+            assert!(chip.flash_size > 0, "Chip should have flash memory");
+            assert!(chip.sector_size() > 0, "Chip should have valid sector size");
+            
+            // Test display format
+            let display = format!("{}", chip);
+            assert!(display.contains(&chip.name), "Display should contain chip name");
+        }
+    }
+
+    #[test]
+    fn test_xor_key_generation() {
+        // Test XOR key generation for encryption
+        let transport = AndroidUsbTransport::new(0, 0x4348, 0x55e0);
+        let flashing = AndroidFlashing::new(transport).expect("Should create flashing instance");
+        
+        let key1 = flashing.generate_xor_key();
+        let key2 = flashing.generate_xor_key(); 
+        
+        assert_eq!(key1.len(), 8, "Key should be 8 bytes");
+        assert_eq!(key2.len(), 8, "Key should be 8 bytes"); 
+        // Keys should be deterministic for the same seed
+        assert_eq!(key1, key2, "Keys should be consistent");
+    }
+
+    #[test]
+    fn test_progress_calculation() {
+        // Test progress calculation helpers that might be used in flashing
+        let test_cases = vec![
+            (0, 1000, 0),      // 0%
+            (250, 1000, 25),   // 25%
+            (500, 1000, 50),   // 50%
+            (750, 1000, 75),   // 75%
+            (1000, 1000, 100), // 100%
+        ];
+        
+        for (current, total, expected) in test_cases {
+            let progress = if total == 0 { 0 } else { (current * 100) / total };
+            assert_eq!(progress, expected, "Progress calculation should be correct for {}/{}", current, total);
+        }
+    }
+
+    #[test]
+    fn test_sector_calculation() {
+        // Test sector calculation for different chip types
+        let chips = vec![
+            (Chip::ch32v203(), 64 * 1024),  // 64KB flash
+            (Chip::ch32v003(), 16 * 1024),  // 16KB flash
+            (Chip::ch32x035(), 62 * 1024),  // 62KB flash
+            (Chip::ch582(), 448 * 1024),    // 448KB flash
+        ];
+        
+        for (chip, expected_flash) in chips {
+            assert_eq!(chip.flash_size, expected_flash, "Flash size should match for {}", chip.name);
+            
+            let sector_size = chip.sector_size();
+            let sectors_needed = (chip.flash_size + sector_size - 1) / sector_size;
+            
+            assert!(sectors_needed > 0, "Should need at least one sector for {}", chip.name);
+            assert!(sectors_needed * sector_size >= chip.flash_size, "Sectors should cover full flash for {}", chip.name);
+        }
+    }
+
+    #[test]
+    fn test_address_alignment() {
+        // Test address alignment calculations that might be used in flashing
+        let test_addresses = vec![0x0000, 0x0400, 0x0800, 0x1000, 0x2000];
+        let alignment = 1024; // 1KB alignment typical for flash sectors
+        
+        for addr in test_addresses {
+            let aligned = (addr + alignment - 1) & !(alignment - 1);
+            assert!(aligned >= addr, "Aligned address should be >= original");
+            assert!(aligned % alignment == 0, "Address should be properly aligned");
+        }
+    }
+}

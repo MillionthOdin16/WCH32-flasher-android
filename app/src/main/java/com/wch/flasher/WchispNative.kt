@@ -17,17 +17,27 @@ object WchispNative {
     private val simulationMode = true
     private val loadError = "Native library disabled - running in simulation mode for maximum compatibility"
     
+    init {
+        Log.d(TAG, "WchispNative object initialized in simulation mode")
+    }
+    
     /**
      * Check if the native library is loaded and available
      * @return false - always in simulation mode for stability
      */
-    fun isLibraryLoaded(): Boolean = false
+    fun isLibraryLoaded(): Boolean {
+        Log.d(TAG, "isLibraryLoaded() called - returning false (simulation mode)")
+        return false
+    }
 
     /**
      * Get the library load error message
      * @return informative message about simulation mode
      */
-    fun getLoadError(): String = loadError
+    fun getLoadError(): String {
+        Log.d(TAG, "getLoadError() called - returning: $loadError")
+        return loadError
+    }
 
     /**
      * Safe initialization - always succeeds in simulation mode

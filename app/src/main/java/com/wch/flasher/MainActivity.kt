@@ -40,6 +40,15 @@ class MainActivity : AppCompatActivity() {
             Pair(0x4348, 0x55e0), // WCH
             Pair(0x1a86, 0x55e0)  // QinHeng Electronics
         )
+        
+        init {
+            // Add global crash handler for debugging
+            Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+                Log.e(TAG, "*** GLOBAL UNCAUGHT EXCEPTION in thread: ${thread.name} ***", exception)
+                Log.e(TAG, "*** CRASH STACK TRACE: ${Log.getStackTraceString(exception)} ***")
+                // Let the app crash but with better logging
+            }
+        }
     }
 
     private val filePickerLauncher = registerForActivityResult(
@@ -108,19 +117,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        Log.d(TAG, "*** MainActivity.onCreate() STARTING ***")
+        try {
+            Log.d(TAG, "Step 1: super.onCreate()")
+            super.onCreate(savedInstanceState)
+            
+            Log.d(TAG, "Step 2: View binding")
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
 
-        usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+            Log.d(TAG, "Step 3: USB manager")
+            usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
 
-        setupUI()
-        requestPermissions()
-        registerUsbReceiver()
-        checkExistingDevices()
-        
-        logMessage("WCH32 Flasher started")
-        logMessage("Ready. Connect a WCH device to begin.")
+            Log.d(TAG, "Step 4: Setup UI")
+            setupUI()
+            
+            Log.d(TAG, "Step 5: Request permissions")
+            requestPermissions()
+            
+            Log.d(TAG, "Step 6: Register USB receiver")
+            registerUsbReceiver()
+            
+            Log.d(TAG, "Step 7: Check existing devices")
+            checkExistingDevices()
+            
+            Log.d(TAG, "Step 8: Log startup messages")
+            logMessage("WCH32 Flasher started (Debug Build)")
+            logMessage("Ready. Connect a WCH device to begin.")
+            
+            Log.d(TAG, "*** MainActivity.onCreate() COMPLETED SUCCESSFULLY ***")
+        } catch (e: Exception) {
+            Log.e(TAG, "*** CRASH in MainActivity.onCreate() ***", e)
+            throw e
+        }
     }
 
     override fun onDestroy() {

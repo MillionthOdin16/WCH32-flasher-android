@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var usbManager: UsbManager
+    private var deviceHandle: Int = -1
     private var connectedDevice: UsbDevice? = null
     private var selectedFirmwareUri: Uri? = null
     
@@ -210,12 +211,44 @@ class MainActivity : AppCompatActivity() {
         logMessage(deviceInfo)
         updateFlashButtonState()
         
-        // TODO: Initialize native wchisp connection
-        // This is where we'll call into the native Rust layer
+        // Initialize native wchisp connection
+        if (!WchispNative.init()) {
+            logMessage("ERROR: Failed to initialize native library")
+            return
+        }
+        
+        // Open device connection through native layer
+        val usbConnection = usbManager.openDevice(device)
+        if (usbConnection != null) {
+            val deviceFd = usbConnection.fileDescriptor
+            deviceHandle = WchispNative.openDevice(deviceFd, device.vendorId, device.productId, usbConnection)
+            
+            if (deviceHandle < 0) {
+                logMessage("ERROR: Failed to open native device connection")
+                usbConnection.close()
+                return
+            }
+            
+            // Identify the connected chip
+            val chipInfo = WchispNative.identifyChip(deviceHandle)
+            if (chipInfo != null) {
+                logMessage("Chip identified: $chipInfo")
+            } else {
+                logMessage("WARNING: Could not identify chip")
+            }
+        } else {
+            logMessage("ERROR: Failed to open USB connection")
+        }
     }
 
     private fun onDeviceDisconnected(device: UsbDevice) {
         if (connectedDevice == device) {
+            // Close native device connection
+            if (deviceHandle >= 0) {
+                WchispNative.closeDevice(deviceHandle)
+                deviceHandle = -1
+            }
+            
             connectedDevice = null
             binding.tvDeviceStatus.text = getString(R.string.no_device_connected)
             logMessage("Device disconnected: ${device.deviceName}")
@@ -265,24 +298,94 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startFlashing() {
-        // TODO: Implement native flashing via JNI
-        logMessage("Flash operation started...")
-        binding.progressBar.visibility = View.VISIBLE
-        binding.progressBar.progress = 0
+        if (deviceHandle < 0) {
+            logMessage("ERROR: No device connected")
+            return
+        }
         
-        // Disable buttons during operation
-        binding.btnFlash.isEnabled = false
-        binding.btnErase.isEnabled = false
-        
-        // This is a placeholder - will be replaced with actual JNI calls
-        simulateFlashProgress()
+        selectedFirmwareUri?.let { uri ->
+            try {
+                val inputStream = contentResolver.openInputStream(uri)
+                val firmwareData = inputStream?.readBytes()
+                inputStream?.close()
+                
+                if (firmwareData != null) {
+                    logMessage("Flash operation started...")
+                    logMessage("Firmware size: ${firmwareData.size} bytes")
+                    binding.progressBar.visibility = View.VISIBLE
+                    binding.progressBar.progress = 0
+                    
+                    // Disable buttons during operation
+                    binding.btnFlash.isEnabled = false
+                    binding.btnErase.isEnabled = false
+                    
+                    // Perform flashing on background thread
+                    Thread {
+                        val success = WchispNative.flashFirmware(deviceHandle, firmwareData)
+                        
+                        runOnUiThread {
+                            binding.progressBar.visibility = View.GONE
+                            binding.btnFlash.isEnabled = true
+                            binding.btnErase.isEnabled = true
+                            
+                            if (success) {
+                                logMessage("✓ Flash operation completed successfully")
+                                
+                                // Optionally verify firmware
+                                logMessage("Verifying firmware...")
+                                val verified = WchispNative.verifyFirmware(deviceHandle, firmwareData)
+                                if (verified) {
+                                    logMessage("✓ Firmware verification passed")
+                                } else {
+                                    logMessage("⚠ Firmware verification failed")
+                                }
+                                
+                                // Reset chip to run new firmware
+                                if (WchispNative.resetChip(deviceHandle)) {
+                                    logMessage("✓ Chip reset completed")
+                                }
+                            } else {
+                                val error = WchispNative.getLastError()
+                                logMessage("✗ Flash operation failed: $error")
+                            }
+                        }
+                    }.start()
+                } else {
+                    logMessage("ERROR: Could not read firmware file")
+                }
+            } catch (e: Exception) {
+                logMessage("ERROR: Failed to read firmware: ${e.message}")
+            }
+        } ?: logMessage("ERROR: No firmware file selected")
     }
 
     private fun eraseChip() {
-        // TODO: Implement native chip erase via JNI
+        if (deviceHandle < 0) {
+            logMessage("ERROR: No device connected")
+            return
+        }
+        
         logMessage("Chip erase started...")
         binding.btnFlash.isEnabled = false
         binding.btnErase.isEnabled = false
+        
+        // Perform erase on background thread
+        Thread {
+            val success = WchispNative.eraseChip(deviceHandle)
+            
+            runOnUiThread {
+                binding.btnFlash.isEnabled = true
+                binding.btnErase.isEnabled = true
+                
+                if (success) {
+                    logMessage("✓ Chip erase completed successfully")
+                } else {
+                    val error = WchispNative.getLastError()
+                    logMessage("✗ Chip erase failed: $error")
+                }
+            }
+        }.start()
+    }
         
         // Placeholder implementation
         logMessage("Chip erase completed (placeholder)")

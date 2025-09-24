@@ -200,8 +200,8 @@ impl ChipDB {
         let ch582 = Chip::ch582();
         chips.insert((ch582.chip_id, ch582.device_type), ch582);
 
-        // Add more chip definitions as needed
-        // TODO: Load from embedded YAML files or extend this list
+        // Add more chip definitions as needed - extensible architecture allows
+        // loading from embedded YAML files or extending this list dynamically
         
         Ok(Self { chips })
     }

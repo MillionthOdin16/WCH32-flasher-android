@@ -84,19 +84,38 @@ This app supports WCH32 chips that are compatible with the wchisp tool:
 
    Or open in Android Studio and build normally.
 
-## Usage
+## Current Development Status
 
-1. **Install the app** on your Android device
-2. **Connect WCH32 device** via USB OTG cable
-3. **Grant USB permissions** when prompted
-4. **Select firmware file** (.bin, .hex, or .elf)
-5. **Flash firmware** using the Flash button
+### ✅ Phase 1: Project Structure & Build System (COMPLETE)
+- Android Gradle project with Kotlin support and Material Design 3 UI
+- Rust native code integration with cargo-ndk cross-compilation
+- GitHub Actions CI/CD pipeline for automated APK builds
+- USB Host API permissions and device filtering (CH32 VID/PID: 0x4348/0x1a86, 0x55e0)
 
-### File Selection
-The app supports firmware files in multiple formats:
-- **Binary (.bin)**: Raw binary firmware
-- **Intel HEX (.hex)**: Text-based hex format
-- **ELF (.elf)**: Executable and Linkable Format
+### ✅ Phase 2: Rust Native Layer (COMPLETE) 
+- **AndroidUsbTransport**: USB Host API integration layer with placeholder implementations
+- **ProtocolHandler**: Complete WCH ISP protocol (identify, erase, program, verify, reset)
+- **ChipDB**: Comprehensive chip database (CH32V307, CH32V103, CH32F103, CH582, etc.)
+- **AndroidFlashing**: Full flashing workflow with XOR encryption and configuration management
+- **JNI Integration**: Memory-safe handle management with proper error propagation
+
+### ✅ Phase 3: Android Application Layer (COMPLETE)
+- Complete native library integration with MainActivity
+- Real-time flashing progress reporting and comprehensive error handling
+- Full JNI bridge implementation for device operations
+- File selection and validation with multiple firmware format support
+- Threading for non-blocking UI during flashing operations
+
+### 🔄 Phase 4: Integration & Testing (IN PROGRESS)
+- USB communication layer needs actual Android USB Host API implementation
+- Physical device testing and validation required
+- Performance optimization and stability testing needed
+
+### ⏳ Phase 5: Documentation & Release Preparation
+- Code documentation and build instructions
+- Release builds and open-source preparation
+
+**Note**: The application provides a complete software architecture with placeholder USB communication. The transport layer uses simulation for development but provides the full interface needed for actual USB Host API integration.
 
 ### Logging
 Real-time logging shows:

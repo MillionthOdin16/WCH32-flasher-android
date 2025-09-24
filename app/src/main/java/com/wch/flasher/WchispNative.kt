@@ -26,9 +26,10 @@ object WchispNative {
      * @param deviceFd USB device file descriptor from Android USB Host API
      * @param vendorId Device vendor ID
      * @param productId Device product ID
+     * @param usbConnection Android UsbDeviceConnection object
      * @return Device handle (positive integer) on success, negative on error
      */
-    external fun openDevice(deviceFd: Int, vendorId: Int, productId: Int): Int
+    external fun openDevice(deviceFd: Int, vendorId: Int, productId: Int, usbConnection: Any): Int
 
     /**
      * Close USB device connection

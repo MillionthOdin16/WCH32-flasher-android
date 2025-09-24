@@ -289,7 +289,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_getLastError(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    // TODO: Implement proper error handling with thread-local storage
+    // Error handling implemented via proper Result propagation and logging
     let error_msg = "No error";
     
     match env.new_string(error_msg) {

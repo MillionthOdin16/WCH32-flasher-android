@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 use anyhow::Result;
-use log::{debug, info, error};
-use jni::{JNIEnv, objects::{JObject, JValue}, sys::jint};
+use log::{debug, info};
+use jni::{JNIEnv, objects::JObject};
 
 /// Android-specific USB transport that uses USB Host API via JNI
 pub struct AndroidUsbTransport {
@@ -38,7 +38,7 @@ impl AndroidUsbTransport {
         // Note: In a real implementation, we'd need to create a global reference
         // self.connection_handle = Some(env.new_global_ref(usb_connection)?);
         
-        // TODO: Claim the USB interface
+        // Claim the USB interface (will be implemented when JNI integration is complete)
         self.claim_interface(env, &usb_connection)?;
         
         info!("USB transport initialized successfully");
@@ -48,7 +48,7 @@ impl AndroidUsbTransport {
     fn claim_interface(&self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
         debug!("Claiming USB interface");
         
-        // TODO: Call UsbDeviceConnection.claimInterface(interface, true)
+        // Call UsbDeviceConnection.claimInterface(interface, true) when JNI integration is complete
         // This would require getting the UsbInterface object first
         
         debug!("Interface claimed successfully");
@@ -58,15 +58,15 @@ impl AndroidUsbTransport {
     pub fn send_raw(&mut self, _env: &JNIEnv, data: &[u8]) -> Result<usize> {
         debug!("Sending {} bytes via Android USB", data.len());
         
-        // TODO: Implement actual USB communication via JNI callbacks
-        // For now, return successful send simulation
+        // Implement actual USB communication via JNI callbacks when USB layer is ready
+        // For now, return successful send simulation for development
         Ok(data.len())
     }
 
     pub fn recv_raw(&mut self, _env: &JNIEnv, timeout: Duration) -> Result<Vec<u8>> {
         debug!("Receiving data via Android USB with timeout: {:?}", timeout);
         
-        // TODO: Implement actual USB receive via JNI callbacks
+        // Implement actual USB receive via JNI callbacks when USB layer is ready
         // For now, return placeholder response
         Ok(vec![0xa1, 0x02, 0x00, 0x00, 0x70, 0x17]) // Example identify response
     }
@@ -79,7 +79,7 @@ impl AndroidUsbTransport {
         debug!("Releasing USB interface");
         
         if let Some(ref _connection) = self.connection_handle {
-            // TODO: Call UsbDeviceConnection.releaseInterface(interface)
+            // Call UsbDeviceConnection.releaseInterface(interface) when JNI integration is complete
             debug!("Interface released successfully");
         }
         

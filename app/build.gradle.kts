@@ -53,7 +53,28 @@ dependencies {
     implementation("androidx.activity:activity:1.9.2")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     
+    // Unit testing
     testImplementation("junit:junit:4.13.2")
+    
+    // Android instrumented testing
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-intents:3.6.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    
+    // Appium and advanced testing
+    androidTestImplementation("io.appium:java-client:9.3.0")
+    androidTestImplementation("org.seleniumhq.selenium:selenium-java:4.27.0")
+    androidTestImplementation("org.seleniumhq.selenium:selenium-support:4.27.0")
+    
+    // Test rules and runners
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    
+    // MockK for mocking
+    androidTestImplementation("io.mockk:mockk-android:1.13.12")
+    
+    // Coroutines testing
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

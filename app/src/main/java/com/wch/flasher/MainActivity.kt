@@ -211,8 +211,14 @@ class MainActivity : AppCompatActivity() {
         logMessage(deviceInfo)
         updateFlashButtonState()
         
+        // Check native library status
+        if (!WchispNative.isLibraryLoaded()) {
+            logMessage("WARNING: Native library not loaded - running in simulation mode")
+            logMessage("Reason: ${WchispNative.getLoadError()}")
+        }
+        
         // Initialize native wchisp connection
-        if (!WchispNative.init()) {
+        if (!WchispNative.safeInit()) {
             logMessage("ERROR: Failed to initialize native library")
             return
         }
@@ -221,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         val usbConnection = usbManager.openDevice(device)
         if (usbConnection != null) {
             val deviceFd = usbConnection.fileDescriptor
-            deviceHandle = WchispNative.openDevice(deviceFd, device.vendorId, device.productId, usbConnection)
+            deviceHandle = WchispNative.safeOpenDevice(deviceFd, device.vendorId, device.productId, usbConnection)
             
             if (deviceHandle < 0) {
                 logMessage("ERROR: Failed to open native device connection")
@@ -230,7 +236,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             // Identify the connected chip
-            val chipInfo = WchispNative.identifyChip(deviceHandle)
+            val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
             if (chipInfo != null) {
                 logMessage("Chip identified: $chipInfo")
             } else {
@@ -245,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         if (connectedDevice == device) {
             // Close native device connection
             if (deviceHandle >= 0) {
-                WchispNative.closeDevice(deviceHandle)
+                WchispNative.safeCloseDevice(deviceHandle)
                 deviceHandle = -1
             }
             
@@ -321,7 +327,7 @@ class MainActivity : AppCompatActivity() {
                     
                     // Perform flashing on background thread
                     Thread {
-                        val success = WchispNative.flashFirmware(deviceHandle, firmwareData)
+                        val success = WchispNative.safeFlashFirmware(deviceHandle, firmwareData)
                         
                         runOnUiThread {
                             binding.progressBar.visibility = View.GONE
@@ -333,7 +339,7 @@ class MainActivity : AppCompatActivity() {
                                 
                                 // Optionally verify firmware
                                 logMessage("Verifying firmware...")
-                                val verified = WchispNative.verifyFirmware(deviceHandle, firmwareData)
+                                val verified = WchispNative.safeVerifyFirmware(deviceHandle, firmwareData)
                                 if (verified) {
                                     logMessage("✓ Firmware verification passed")
                                 } else {
@@ -341,11 +347,11 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 
                                 // Reset chip to run new firmware
-                                if (WchispNative.resetChip(deviceHandle)) {
+                                if (WchispNative.safeResetChip(deviceHandle)) {
                                     logMessage("✓ Chip reset completed")
                                 }
                             } else {
-                                val error = WchispNative.getLastError()
+                                val error = WchispNative.safeGetLastError()
                                 logMessage("✗ Flash operation failed: $error")
                             }
                         }
@@ -371,7 +377,7 @@ class MainActivity : AppCompatActivity() {
         
         // Perform erase on background thread
         Thread {
-            val success = WchispNative.eraseChip(deviceHandle)
+            val success = WchispNative.safeEraseChip(deviceHandle)
             
             runOnUiThread {
                 binding.btnFlash.isEnabled = true
@@ -380,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                 if (success) {
                     logMessage("✓ Chip erase completed successfully")
                 } else {
-                    val error = WchispNative.getLastError()
+                    val error = WchispNative.safeGetLastError()
                     logMessage("✗ Chip erase failed: $error")
                 }
             }

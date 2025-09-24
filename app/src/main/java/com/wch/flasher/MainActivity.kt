@@ -237,11 +237,7 @@ class MainActivity : AppCompatActivity() {
             
             // Identify the connected chip
             val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
-            if (chipInfo != null) {
-                logMessage("Chip identified: $chipInfo")
-            } else {
-                logMessage("WARNING: Could not identify chip")
-            }
+            logMessage("Chip identified: $chipInfo")
         } else {
             logMessage("ERROR: Failed to open USB connection")
         }

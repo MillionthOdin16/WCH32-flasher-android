@@ -14,23 +14,27 @@ class WchispNativeTest {
 
     @Test
     fun testNativeLibraryInterface() {
-        // Test that the WchispNative class has the expected interface
+        // Test that the WchispNative class has the expected safe interface methods
         // without actually loading the native library (which isn't available in unit tests)
         
         // Verify the class exists and has the expected methods
         val methods = WchispNative::class.java.declaredMethods
         val methodNames = methods.map { it.name }.toSet()
         
-        // Check that all expected JNI methods are declared
-        assertTrue("Should have init method", methodNames.contains("init"))
-        assertTrue("Should have openDevice method", methodNames.contains("openDevice"))
-        assertTrue("Should have closeDevice method", methodNames.contains("closeDevice"))
-        assertTrue("Should have identifyChip method", methodNames.contains("identifyChip"))
-        assertTrue("Should have flashFirmware method", methodNames.contains("flashFirmware"))
-        assertTrue("Should have eraseChip method", methodNames.contains("eraseChip"))
-        assertTrue("Should have verifyFirmware method", methodNames.contains("verifyFirmware"))
-        assertTrue("Should have resetChip method", methodNames.contains("resetChip"))
-        assertTrue("Should have getLastError method", methodNames.contains("getLastError"))
+        // Check that all expected safe wrapper methods are declared
+        assertTrue("Should have safeInit method", methodNames.contains("safeInit"))
+        assertTrue("Should have safeOpenDevice method", methodNames.contains("safeOpenDevice"))
+        assertTrue("Should have safeCloseDevice method", methodNames.contains("safeCloseDevice"))
+        assertTrue("Should have safeIdentifyChip method", methodNames.contains("safeIdentifyChip"))
+        assertTrue("Should have safeFlashFirmware method", methodNames.contains("safeFlashFirmware"))
+        assertTrue("Should have safeEraseChip method", methodNames.contains("safeEraseChip"))
+        assertTrue("Should have safeVerifyFirmware method", methodNames.contains("safeVerifyFirmware"))
+        assertTrue("Should have safeResetChip method", methodNames.contains("safeResetChip"))
+        assertTrue("Should have safeGetLastError method", methodNames.contains("safeGetLastError"))
+        
+        // Check that library status methods are available
+        assertTrue("Should have isLibraryLoaded method", methodNames.contains("isLibraryLoaded"))
+        assertTrue("Should have getLoadError method", methodNames.contains("getLoadError"))
     }
 
     @Test

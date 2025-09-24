@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use log::{info, debug, warn};
-use jni::JNIEnv;
+use jni::{JNIEnv, objects::JObject};
 use std::time::Duration;
 
 use crate::device::{Chip, ChipDB};
@@ -49,7 +49,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    fn identify_chip(&mut self, env: &JNIEnv) -> Result<()> {
+    fn identify_chip(&mut self, env: &mut JNIEnv) -> Result<()> {
         debug!("Identifying chip...");
         
         let (chip_id, device_type) = self.protocol.identify_chip(&mut self.transport, env)?;
@@ -62,7 +62,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    fn read_chip_config(&mut self, env: &JNIEnv) -> Result<()> {
+    fn read_chip_config(&mut self, env: &mut JNIEnv) -> Result<()> {
         debug!("Reading chip configuration");
         
         let read_conf = Command::read_config(CFG_MASK_ALL);
@@ -124,7 +124,7 @@ impl AndroidFlashing {
         &self.chip
     }
 
-    pub fn flash_firmware(&mut self, env: &JNIEnv, firmware_data: &[u8]) -> Result<()> {
+    pub fn flash_firmware(&mut self, env: &mut JNIEnv, firmware_data: &[u8]) -> Result<()> {
         info!("Starting firmware flash, size: {} bytes", firmware_data.len());
         
         // Unprotect flash if needed
@@ -149,7 +149,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    fn unprotect_flash(&mut self, env: &JNIEnv) -> Result<()> {
+    fn unprotect_flash(&mut self, env: &mut JNIEnv) -> Result<()> {
         info!("Unprotecting code flash");
         
         let read_conf = Command::read_config(CFG_MASK_RDPR_USER_DATA_WPR);
@@ -176,7 +176,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    pub fn erase_flash(&mut self, env: &JNIEnv, sectors: u32) -> Result<()> {
+    pub fn erase_flash(&mut self, env: &mut JNIEnv, sectors: u32) -> Result<()> {
         info!("Erasing {} flash sectors", sectors);
         
         let erase_cmd = Command::erase(sectors);
@@ -195,7 +195,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    fn setup_isp_key(&mut self, env: &JNIEnv) -> Result<()> {
+    fn setup_isp_key(&mut self, env: &mut JNIEnv) -> Result<()> {
         debug!("Setting up ISP key");
         
         // Use all-zero key seed (standard approach)
@@ -218,7 +218,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    fn program_flash(&mut self, env: &JNIEnv, data: &[u8]) -> Result<()> {
+    fn program_flash(&mut self, env: &mut JNIEnv, data: &[u8]) -> Result<()> {
         info!("Programming flash...");
         
         const CHUNK_SIZE: usize = 56; // Standard WCH ISP chunk size
@@ -267,7 +267,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    pub fn verify_firmware(&mut self, env: &JNIEnv, expected_data: &[u8]) -> Result<()> {
+    pub fn verify_firmware(&mut self, env: &mut JNIEnv, expected_data: &[u8]) -> Result<()> {
         info!("Verifying firmware...");
         
         const CHUNK_SIZE: usize = 56;
@@ -301,7 +301,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    pub fn reset_chip(&mut self, env: &JNIEnv) -> Result<()> {
+    pub fn reset_chip(&mut self, env: &mut JNIEnv) -> Result<()> {
         info!("Resetting chip...");
         
         let isp_end = Command::isp_end(1);
@@ -315,7 +315,7 @@ impl AndroidFlashing {
         Ok(())
     }
 
-    pub fn erase_eeprom(&mut self, env: &JNIEnv) -> Result<()> {
+    pub fn erase_eeprom(&mut self, env: &mut JNIEnv) -> Result<()> {
         if self.chip.eeprom_size == 0 {
             return Err(anyhow::anyhow!("Chip does not support EEPROM"));
         }
@@ -356,7 +356,7 @@ impl AndroidFlashing {
             .fold(0u8, |acc, &x| acc.overflowing_add(x).0)
     }
 
-    pub fn close(&mut self, env: &JNIEnv) -> Result<()> {
+    pub fn close(&mut self, env: &mut JNIEnv) -> Result<()> {
         info!("Closing flashing interface");
         self.transport.close(env)?;
         info!("Flashing interface closed");

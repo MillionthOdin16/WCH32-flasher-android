@@ -236,7 +236,7 @@ impl ProtocolHandler {
     pub fn transfer(
         &self,
         transport: &mut AndroidUsbTransport,
-        env: &JNIEnv,
+        env: &mut JNIEnv,
         cmd: Command
     ) -> Result<Response> {
         self.transfer_with_timeout(transport, env, cmd, Duration::from_millis(1000))
@@ -246,7 +246,7 @@ impl ProtocolHandler {
     pub fn transfer_with_timeout(
         &self,
         transport: &mut AndroidUsbTransport,
-        env: &JNIEnv,
+        env: &mut JNIEnv,
         cmd: Command,
         timeout: Duration
     ) -> Result<Response> {
@@ -289,7 +289,7 @@ impl ProtocolHandler {
     pub fn identify_chip(
         &self,
         transport: &mut AndroidUsbTransport,
-        env: &JNIEnv
+        env: &mut JNIEnv
     ) -> Result<(u8, u8)> {
         debug!("Identifying chip");
         

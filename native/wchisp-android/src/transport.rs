@@ -9,6 +9,7 @@ use jni::{JNIEnv, objects::JObject};
 
 /// Android-specific USB transport that uses USB Host API via JNI
 pub struct AndroidUsbTransport {
+    #[allow(dead_code)]
     device_fd: i32,
     vendor_id: u16,  
     product_id: u16,
@@ -30,7 +31,7 @@ impl AndroidUsbTransport {
     }
 
     /// Initialize the USB connection using Android USB Host API via JNI
-    pub fn initialize(&mut self, env: &JNIEnv, usb_connection: JObject) -> Result<()> {
+    pub fn initialize(&mut self, env: &mut JNIEnv, usb_connection: JObject) -> Result<()> {
         info!("Initializing USB transport for VID: 0x{:04X}, PID: 0x{:04X}", 
               self.vendor_id, self.product_id);
               
@@ -52,26 +53,116 @@ impl AndroidUsbTransport {
         Ok(())
     }
 
-    fn claim_interface(&self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
+    fn claim_interface(&self, env: &mut JNIEnv, connection: &JObject) -> Result<()> {
         debug!("Claiming USB interface");
         
-        // In a complete implementation, we would:
-        // 1. Get the UsbInterface object from the device
-        // 2. Call UsbDeviceConnection.claimInterface(interface, true)
-        // For now, we simulate successful interface claiming
+        // Get UsbDevice from connection
+        let device = env.call_method(
+            connection,
+            "getDevice",
+            "()Landroid/hardware/usb/UsbDevice;",
+            &[]
+        )?;
+        let device_obj = device.l()?;
         
-        debug!("Interface claiming simulated (needs full Android USB Host API integration)");
+        // Get first interface (interface 0)
+        let interface = env.call_method(
+            &device_obj,
+            "getInterface",
+            "(I)Landroid/hardware/usb/UsbInterface;",
+            &[jni::objects::JValue::Int(0)]
+        )?;
+        let interface_obj = interface.l()?;
+        
+        // Claim the interface with force flag
+        let claimed = env.call_method(
+            connection,
+            "claimInterface",
+            "(Landroid/hardware/usb/UsbInterface;Z)Z",
+            &[
+                jni::objects::JValue::Object(&interface_obj),
+                jni::objects::JValue::Bool(true as jni::sys::jboolean), // Force claim
+            ]
+        )?;
+        
+        if !claimed.z()? {
+            return Err(anyhow::anyhow!("Failed to claim USB interface"));
+        }
+        
+        debug!("USB interface claimed successfully");
         Ok(())
     }
     
-    fn discover_endpoints(&mut self, _env: &JNIEnv, _connection: &JObject) -> Result<()> {
+    fn discover_endpoints(&mut self, env: &mut JNIEnv, connection: &JObject) -> Result<()> {
         debug!("Discovering USB endpoints");
         
-        // For WCH ISP devices, standard endpoints are:
-        self.endpoint_out = 0x02; // OUT endpoint
-        self.endpoint_in = 0x82;  // IN endpoint (0x80 | 0x02)
+        // Get UsbDevice from connection
+        let device = env.call_method(
+            connection,
+            "getDevice",
+            "()Landroid/hardware/usb/UsbDevice;",
+            &[]
+        )?;
+        let device_obj = device.l()?;
         
-        debug!("Using standard WCH ISP endpoints: OUT=0x{:02X}, IN=0x{:02X}", 
+        // Get first interface (interface 0)
+        let interface = env.call_method(
+            &device_obj,
+            "getInterface",
+            "(I)Landroid/hardware/usb/UsbInterface;",
+            &[jni::objects::JValue::Int(0)]
+        )?;
+        let interface_obj = interface.l()?;
+        
+        // Get endpoint count
+        let endpoint_count = env.call_method(
+            &interface_obj,
+            "getEndpointCount",
+            "()I",
+            &[]
+        )?;
+        let count = endpoint_count.i()?;
+        
+        debug!("Found {} endpoints", count);
+        
+        for i in 0..count {
+            let endpoint = env.call_method(
+                &interface_obj,
+                "getEndpoint",
+                "(I)Landroid/hardware/usb/UsbEndpoint;",
+                &[jni::objects::JValue::Int(i)]
+            )?;
+            let endpoint_obj = endpoint.l()?;
+            
+            // Get endpoint address
+            let address = env.call_method(
+                &endpoint_obj,
+                "getAddress",
+                "()I",
+                &[]
+            )?;
+            let addr = address.i()? as u8;
+            
+            // Get endpoint direction
+            let direction = env.call_method(
+                &endpoint_obj,
+                "getDirection",
+                "()I", 
+                &[]
+            )?;
+            let dir = direction.i()?;
+            
+            // USB_DIR_OUT = 0, USB_DIR_IN = 128 (0x80)
+            if dir == 0 { // OUT endpoint
+                self.endpoint_out = addr;
+                debug!("Found OUT endpoint: 0x{:02X}", addr);
+            } else { // IN endpoint
+                self.endpoint_in = addr;
+                debug!("Found IN endpoint: 0x{:02X}", addr);
+            }
+        }
+        
+        debug!("Endpoint discovery completed: OUT=0x{:02X}, IN=0x{:02X}", 
                self.endpoint_out, self.endpoint_in);
         Ok(())
     }
@@ -149,19 +240,62 @@ impl AndroidUsbTransport {
         matches!((vendor_id, product_id), (0x4348, 0x55e0) | (0x1a86, 0x55e0))
     }
     
-    pub fn release_interface(&self, _env: &JNIEnv) -> Result<()> {
+    pub fn release_interface(&self, env: &mut JNIEnv) -> Result<()> {
         debug!("Releasing USB interface");
         
-        if let Some(ref _connection) = self.connection_handle {
-            // Call UsbDeviceConnection.releaseInterface(interface) when JNI integration is complete
-            debug!("Interface released successfully");
+        if let Some(ref connection) = self.connection_handle {
+            // Get UsbDevice from connection
+            let device = env.call_method(
+                connection,
+                "getDevice",
+                "()Landroid/hardware/usb/UsbDevice;",
+                &[]
+            )?;
+            let device_obj = device.l()?;
+            
+            // Get first interface (interface 0)
+            let interface = env.call_method(
+                &device_obj,
+                "getInterface",
+                "(I)Landroid/hardware/usb/UsbInterface;",
+                &[jni::objects::JValue::Int(0)]
+            )?;
+            let interface_obj = interface.l()?;
+            
+            // Release the interface
+            let released = env.call_method(
+                connection,
+                "releaseInterface",
+                "(Landroid/hardware/usb/UsbInterface;)Z",
+                &[jni::objects::JValue::Object(&interface_obj)]
+            )?;
+            
+            if released.z()? {
+                debug!("USB interface released successfully");
+            } else {
+                debug!("Warning: Failed to release USB interface");
+            }
         }
         
         Ok(())
     }
     
-    pub fn close(&mut self, _env: &JNIEnv) -> Result<()> {
+    pub fn close(&mut self, env: &mut JNIEnv) -> Result<()> {
         info!("Closing USB transport");
+        
+        // Release interface before closing
+        self.release_interface(env)?;
+        
+        // Close the USB connection
+        if let Some(ref connection) = self.connection_handle {
+            let _result = env.call_method(
+                connection,
+                "close",
+                "()V",
+                &[]
+            );
+            // Note: We don't fail if close() fails as connection may already be closed
+        }
         
         self.connection_handle = None;
         info!("USB transport closed");

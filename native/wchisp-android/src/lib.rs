@@ -44,7 +44,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_init(
 /// Open USB device connection using Android USB Host API
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_openDevice(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     device_fd: jint,
     vendor_id: jint,
@@ -71,7 +71,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_openDevice(
     };
     
     // Initialize the flasher with the USB connection
-    if let Err(e) = flasher.initialize(&env, usb_connection) {
+    if let Err(e) = flasher.initialize(&mut env, usb_connection) {
         error!("Failed to initialize flasher: {}", e);
         return -1;
     }
@@ -96,7 +96,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_openDevice(
 /// Close USB device connection
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_closeDevice(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jint,
 ) -> jboolean {
@@ -104,7 +104,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_closeDevice(
     
     let mut instances = FLASHER_INSTANCES.lock().unwrap();
     if let Some(mut flasher) = instances.remove(&handle) {
-        if let Err(e) = flasher.close(&env) {
+        if let Err(e) = flasher.close(&mut env) {
             error!("Error closing flasher: {}", e);
             return false as jboolean;
         }
@@ -144,7 +144,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_identifyChip(
 /// Flash firmware to the chip
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_flashFirmware(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jint,
     firmware_data: jbyteArray,
@@ -168,7 +168,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_flashFirmware(
     
     let mut instances = FLASHER_INSTANCES.lock().unwrap();
     if let Some(flasher) = instances.get_mut(&handle) {
-        match flasher.flash_firmware(&env, &firmware) {
+        match flasher.flash_firmware(&mut env, &firmware) {
             Ok(()) => {
                 info!("Firmware flash completed successfully");
                 true as jboolean
@@ -187,7 +187,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_flashFirmware(
 /// Erase chip flash memory
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_eraseChip(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jint,
 ) -> jboolean {
@@ -200,7 +200,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_eraseChip(
         let sector_size = chip.sector_size();
         let sectors = (chip.flash_size + sector_size - 1) / sector_size;
         
-        match flasher.erase_flash(&env, sectors) {
+        match flasher.erase_flash(&mut env, sectors) {
             Ok(()) => {
                 info!("Chip erase completed successfully");
                 true as jboolean
@@ -219,7 +219,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_eraseChip(
 /// Verify firmware on the chip
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_verifyFirmware(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jint,
     firmware_data: jbyteArray,
@@ -240,7 +240,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_verifyFirmware(
     
     let mut instances = FLASHER_INSTANCES.lock().unwrap();
     if let Some(flasher) = instances.get_mut(&handle) {
-        match flasher.verify_firmware(&env, &firmware) {
+        match flasher.verify_firmware(&mut env, &firmware) {
             Ok(()) => {
                 info!("Firmware verification completed successfully");
                 true as jboolean
@@ -259,7 +259,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_verifyFirmware(
 /// Reset the chip
 #[no_mangle]
 pub extern "C" fn Java_com_wch_flasher_WchispNative_resetChip(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jint,
 ) -> jboolean {
@@ -267,7 +267,7 @@ pub extern "C" fn Java_com_wch_flasher_WchispNative_resetChip(
     
     let mut instances = FLASHER_INSTANCES.lock().unwrap();
     if let Some(flasher) = instances.get_mut(&handle) {
-        match flasher.reset_chip(&env) {
+        match flasher.reset_chip(&mut env) {
             Ok(()) => {
                 info!("Chip reset completed successfully");
                 true as jboolean

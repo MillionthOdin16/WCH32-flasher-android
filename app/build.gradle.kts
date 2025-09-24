@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.wch.flasher"
-        minSdk = 12  // Android 3.1 (API 12) as per spec
+        minSdk = 21  // Updated to satisfy AndroidX library requirements (Android 5.0+)
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"

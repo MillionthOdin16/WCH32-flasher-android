@@ -386,11 +386,6 @@ class MainActivity : AppCompatActivity() {
             }
         }.start()
     }
-        
-        // Placeholder implementation
-        logMessage("Chip erase completed (placeholder)")
-        updateFlashButtonState()
-    }
 
     private fun simulateFlashProgress() {
         // Temporary simulation - will be replaced with actual JNI implementation

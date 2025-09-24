@@ -95,7 +95,11 @@ This app supports WCH32 chips that are compatible with the wchisp tool:
 ### ✅ Phase 2: Rust Native Layer (COMPLETE) 
 - **AndroidUsbTransport**: USB Host API integration layer with placeholder implementations
 - **ProtocolHandler**: Complete WCH ISP protocol (identify, erase, program, verify, reset)
-- **ChipDB**: Comprehensive chip database (CH32V307, CH32V103, CH32F103, CH582, etc.)
+- **ChipDB**: Comprehensive chip database with 13 supported chip families:
+  - CH32V307, CH32V103, CH32F103 series
+  - CH32V203, CH32V003, CH32X035 series  
+  - CH549, CH552, CH573, CH579, CH559, CH592, CH582 series
+  - Full chip identification with proper IDs, device types, and flash sizes
 - **AndroidFlashing**: Full flashing workflow with XOR encryption and configuration management
 - **JNI Integration**: Memory-safe handle management with proper error propagation
 

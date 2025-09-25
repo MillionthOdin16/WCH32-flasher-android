@@ -304,11 +304,12 @@ class MainActivity : AppCompatActivity() {
                 addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             }
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(usbReceiver, filter)
-            }
+            ContextCompat.registerReceiver(
+                this,
+                usbReceiver, 
+                filter, 
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             receiverRegistered = true
             Log.d(TAG, "USB receiver registered successfully")
         } catch (e: Exception) {

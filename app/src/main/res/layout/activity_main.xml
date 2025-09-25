@@ -65,14 +65,58 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="No file selected"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                android:drawablePadding="8dp"
+                android:drawableStart="@android:drawable/ic_menu_gallery" />
 
             <Button
                 android:id="@+id/btnSelectFile"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/select_firmware" />
+                android:text="@string/select_firmware"
+                android:drawableStart="@android:drawable/ic_input_add" />
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Progress Information Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:visibility="gone"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Operation Progress"
+                android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
+
+            <TextView
+                android:id="@+id/tvProgressInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/ready_to_flash"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -92,6 +136,7 @@
             android:layout_weight="1"
             android:enabled="false"
             android:text="@string/flash_firmware"
+            android:drawableStart="@android:drawable/stat_sys_download"
             style="@style/Widget.Material3.Button" />
 
         <Button
@@ -102,18 +147,10 @@
             android:layout_weight="1"
             android:enabled="false"
             android:text="@string/erase_chip"
+            android:drawableStart="@android:drawable/ic_menu_delete"
             style="@style/Widget.Material3.Button.OutlinedButton" />
 
     </LinearLayout>
-
-    <!-- Progress Bar -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:visibility="gone" />
 
     <!-- Log Output -->
     <com.google.android.material.card.MaterialCardView

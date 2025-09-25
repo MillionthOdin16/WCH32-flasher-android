@@ -15,4 +15,16 @@
     <string name="reset_device">Reset Device</string>
     <string name="erase_chip">Erase Chip</string>
     <string name="verify_firmware">Verify</string>
+    
+    <!-- Enhanced user feedback strings -->
+    <string name="simulation_mode_info">Running in simulation mode - no hardware required</string>
+    <string name="operation_in_progress">Operation in progress, please wait…</string>
+    <string name="firmware_validation_failed">Firmware file validation failed</string>
+    <string name="large_firmware_warning">Large firmware file detected - this may take longer to flash</string>
+    <string name="small_firmware_warning">Very small firmware file - please verify this is correct</string>
+    <string name="unsupported_file_format">Unsupported file format - use .bin, .hex, or .elf files</string>
+    <string name="chip_reset_success">Chip reset completed - new firmware is running</string>
+    <string name="chip_reset_failed">Chip reset failed - manual reset may be required</string>
+    <string name="verification_in_progress">Verifying firmware integrity…</string>
+    <string name="ready_to_flash">Ready to flash - select firmware and connect device</string>
 </resources>

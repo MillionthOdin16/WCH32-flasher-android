@@ -53,6 +53,10 @@ dependencies {
     implementation("androidx.activity:activity:1.9.2")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     
+    // Kotlin Coroutines for better async handling
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    
     // Unit testing
     testImplementation("junit:junit:4.13.2")
     

@@ -2,17 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- USB Host API permissions as specified in requirements -->
+    <!-- USB Host API permissions - completely optional for stability -->
     <uses-feature
         android:name="android.hardware.usb.host"
-        android:required="true" />
+        android:required="false" />
     
-    <!-- Storage permissions for firmware file access -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Simplified storage permissions for Android 16 compatibility -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+                     android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" 
+                     android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" 
+                     android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" 
+                     android:minSdkVersion="33" />
     
-    <!-- USB permissions -->
-    <uses-permission android:name="android.permission.USB_PERMISSION" />
+    <!-- USB permissions - make optional -->
+    <uses-permission android:name="android.permission.USB_PERMISSION" 
+                     android:required="false"
+                     tools:ignore="UnusedAttribute" />
 
     <application
         android:allowBackup="true"
@@ -22,19 +30,21 @@
         android:label="@string/app_name"
         android:roundIcon="@drawable/ic_launcher_round"
         android:theme="@style/Theme.WCH32Flasher"
-        tools:targetApi="31">
+        android:enableOnBackInvokedCallback="true"
+        tools:targetApi="35">
         
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.WCH32Flasher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- USB device attachment intent filters -->
-            <intent-filter>
+            <!-- USB device attachment intent filters - completely optional -->
+            <intent-filter android:priority="0">
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
             

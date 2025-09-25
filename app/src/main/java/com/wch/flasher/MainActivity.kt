@@ -135,8 +135,19 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Step 7: Check existing devices safely")
             safeCheckExistingDevices()
             
-            Log.d(TAG, "Step 8: Initialize simulation mode")
-            initializeSimulationMode()
+            Log.d(TAG, "Step 8: Complete initialization")
+            
+            // Set initial app state
+            logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            if (WchispNative.isLibraryLoaded()) {
+                logMessage("✓ Native WCH ISP library loaded successfully")
+                logMessage("Ready to connect WCH32 devices via USB")
+            } else {
+                logMessage("⚠ Native library not available: ${WchispNative.getLoadError()}")
+                logMessage("Please ensure native library is built and included")
+            }
+            
+            binding.tvDeviceStatus.text = getString(R.string.no_device_connected)
             
             Log.d(TAG, "*** MainActivity.onCreate() COMPLETED SUCCESSFULLY ***")
             
@@ -158,23 +169,6 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "Error initializing USB Manager: ${e.message}")
             usbManager = null
         }
-    }
-
-    private fun initializeSimulationMode() {
-        // Always set up simulation mode for reliability
-        logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        logMessage("Running in enhanced simulation mode for maximum compatibility")
-        
-        // Set up simulation device status with improved formatting
-        val simulationStatus = "🔧 Simulation Mode: CH32V203 (64KB Flash) - Ready"
-        binding.tvDeviceStatus.text = simulationStatus
-        logMessage("Simulation mode: CH32V203 device ready")
-        logMessage("Available operations: Flash, Erase, Verify, Reset")
-        logMessage("Note: This is simulation mode - no real hardware will be programmed")
-        
-        // Enable simulation device
-        deviceHandle = 1 // Mock handle for simulation
-        updateFlashButtonState()
     }
 
     override fun onDestroy() {
@@ -202,7 +196,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvDeviceStatus.text = "App started in minimal mode due to initialization error"
             logMessage("ERROR: App started in minimal mode due to: ${e.message}")
             logMessage("This may be due to Android 16 compatibility issues")
-            logMessage("Basic simulation functionality is available")
+            logMessage("Basic functionality is available - please connect a WCH device")
             
         } catch (fallbackError: Exception) {
             Log.e(TAG, "Even minimal mode failed", fallbackError)
@@ -211,24 +205,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMinimalUI() {
         binding.btnSelectFile.setOnClickListener {
-            logMessage("File selection available - simulation mode active")
-            // Use safe file picker
+            logMessage("File selection available")
             safeOpenFilePicker()
         }
         
         binding.btnFlash.setOnClickListener {
-            logMessage("Flash simulation started...")
-            simulateFlashOperation()
+            logMessage("Flash operation started...")
+            startFlashing()
         }
         
         binding.btnErase.setOnClickListener {
-            logMessage("Erase simulation started...")
-            simulateEraseOperation()
+            logMessage("Erase operation started...")
+            eraseChip()
         }
         
-        // Enable buttons for simulation
-        binding.btnFlash.isEnabled = true
-        binding.btnErase.isEnabled = true
+        // Initially disable buttons until device is connected
+        binding.btnFlash.isEnabled = false
+        binding.btnErase.isEnabled = false
     }
 
     private fun setupUI() {
@@ -290,7 +283,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting permissions: ${e.message}")
-            logMessage("Permission request failed - continuing in simulation mode")
+            logMessage("Permission request failed - continuing with basic functionality")
         }
     }
 
@@ -358,7 +351,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error checking existing devices: ${e.message}")
-            logMessage("Device detection failed - using simulation mode")
+            logMessage("Device detection failed - ensure USB host support is available")
         }
     }
 
@@ -385,7 +378,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting device permission: ${e.message}")
-            logMessage("USB permission request failed - continuing in simulation mode")
+            logMessage("USB permission request failed - device access denied")
         }
     }
 
@@ -401,8 +394,10 @@ class MainActivity : AppCompatActivity() {
             
             // Check native library status
             if (!WchispNative.isLibraryLoaded()) {
-                logMessage("INFO: Native library not loaded - running in simulation mode")
+                logMessage("WARNING: Native library not loaded - functionality limited")
                 logMessage("Reason: ${WchispNative.getLoadError()}")
+                binding.tvDeviceStatus.text = "$deviceInfo - Native library not available"
+                return
             }
             
             // Initialize native wchisp connection
@@ -411,8 +406,29 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             
+            // Open device connection using USB Host API
+            val usbConnection = usbManager?.openDevice(device)
+            if (usbConnection == null) {
+                logMessage("ERROR: Failed to open USB device connection")
+                return
+            }
+            
+            // Get the device handle from native library
+            deviceHandle = WchispNative.safeOpenDevice(
+                usbConnection.fileDescriptor, 
+                device.vendorId, 
+                device.productId, 
+                usbConnection
+            )
+            
+            if (deviceHandle <= 0) {
+                logMessage("ERROR: Failed to open device in native library")
+                usbConnection.close()
+                return
+            }
+            
             // Identify the connected chip
-            val chipInfo = WchispNative.safeIdentifyChip(1) // Use mock handle for simulation  
+            val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
             logMessage("Chip identification: $chipInfo")
             
             // Update device status with chip info
@@ -420,14 +436,12 @@ class MainActivity : AppCompatActivity() {
             
         } catch (e: Exception) {
             Log.w(TAG, "Error handling device connection: ${e.message}")
-            logMessage("Device connection failed - using simulation mode")
+            logMessage("Device connection failed: ${e.message}")
             
-            // Set up simulation mode as fallback
-            val simulationStatus = "🔧 Simulation: CH32V203 (64KB Flash) - Device simulation active"
-            binding.tvDeviceStatus.text = simulationStatus
-            val chipInfo = WchispNative.safeIdentifyChip(1) // Use simulation handle
-            logMessage("Fallback simulation chip: $chipInfo")
-            updateFlashButtonState()
+            // Set up basic device status without native functionality
+            val basicStatus = "🔗 Device: ${device.deviceName} - Connection failed"
+            binding.tvDeviceStatus.text = basicStatus
+            logMessage("Device detected but connection failed - check permissions and native library")
         }
     }
 
@@ -435,7 +449,7 @@ class MainActivity : AppCompatActivity() {
         if (connectedDevice == device) {
             try {
                 // Close native device connection
-                if (deviceHandle >= 0) {
+                if (deviceHandle > 0) {
                     WchispNative.safeCloseDevice(deviceHandle)
                     deviceHandle = -1
                 }
@@ -596,17 +610,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val success = withContext(Dispatchers.IO) {
-                    // Simulate progressive flashing with better progress reporting
-                    for (progress in 0..100 step 10) {
-                        withContext(Dispatchers.Main) {
-                            binding.progressBar.progress = progress
-                            binding.tvProgressInfo.text = "Flashing firmware... ${progress}%"
-                            logMessage("Flashing... ${progress}%")
-                        }
-                        delay(200) // Simulate work being done
-                    }
-                    
-                    // Perform actual flash operation
+                    // Perform actual flash operation through native library
                     WchispNative.safeFlashFirmware(deviceHandle, firmwareData)
                 }
                 
@@ -670,8 +674,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setOperationInProgress(inProgress: Boolean) {
-        binding.btnFlash.isEnabled = !inProgress && (connectedDevice != null || deviceHandle > 0) && selectedFirmwareUri != null
-        binding.btnErase.isEnabled = !inProgress && (connectedDevice != null || deviceHandle > 0)
+        val hasDevice = (connectedDevice != null || deviceHandle > 0)
+        val hasFile = selectedFirmwareUri != null
+        
+        binding.btnFlash.isEnabled = !inProgress && hasDevice && hasFile
+        binding.btnErase.isEnabled = !inProgress && hasDevice
         binding.btnSelectFile.isEnabled = !inProgress
     }
 
@@ -697,52 +704,6 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "Error during erase operation", e)
                 logMessage("✗ Chip erase failed: ${e.message}")
             } finally {
-                setOperationInProgress(false)
-            }
-        }
-    }
-
-    private fun simulateFlashOperation() {
-        logMessage("Simulation: Flash operation started...")
-        binding.cardProgress.visibility = View.VISIBLE
-        binding.progressBar.visibility = View.VISIBLE
-        setOperationInProgress(true)
-        
-        lifecycleScope.launch {
-            try {
-                for (progress in 0..100 step 20) {
-                    delay(500)
-                    binding.progressBar.progress = progress
-                    binding.tvProgressInfo.text = "Simulation: Flashing... ${progress}%"
-                    logMessage("Simulation: Flashing... ${progress}%")
-                }
-                binding.tvProgressInfo.text = "Simulation: Flash completed successfully"
-                logMessage("✓ Simulation: Flash completed successfully")
-                delay(2000)
-            } finally {
-                binding.progressBar.visibility = View.GONE
-                binding.cardProgress.visibility = View.GONE
-                binding.tvProgressInfo.text = getString(R.string.ready_to_flash)
-                setOperationInProgress(false)
-            }
-        }
-    }
-
-    private fun simulateEraseOperation() {
-        logMessage("Simulation: Erase operation started...")
-        binding.cardProgress.visibility = View.VISIBLE
-        binding.tvProgressInfo.text = "Simulation: Erasing chip..."
-        setOperationInProgress(true)
-        
-        lifecycleScope.launch {
-            try {
-                delay(2000)
-                binding.tvProgressInfo.text = "Simulation: Erase completed successfully"
-                logMessage("✓ Simulation: Erase completed successfully")
-                delay(1000)
-            } finally {
-                binding.cardProgress.visibility = View.GONE
-                binding.tvProgressInfo.text = getString(R.string.ready_to_flash)
                 setOperationInProgress(false)
             }
         }

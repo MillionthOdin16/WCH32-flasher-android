@@ -1,195 +1,246 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
+    android:fillViewport="true"
     tools:context=".MainActivity">
 
-    <!-- Device Status Card -->
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="4dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/device_info"
-                android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
-
-            <TextView
-                android:id="@+id/tvDeviceStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/no_device_connected"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
-
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <!-- File Selection Card -->
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="4dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Firmware File"
-                android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
-
-            <TextView
-                android:id="@+id/tvSelectedFile"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="No file selected"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:drawablePadding="8dp"
-                android:drawableStart="@android:drawable/ic_menu_gallery" />
-
-            <Button
-                android:id="@+id/btnSelectFile"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/select_firmware"
-                android:drawableStart="@android:drawable/ic_input_add" />
-
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <!-- Progress Information Card -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardProgress"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:visibility="gone"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="4dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Operation Progress"
-                android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
-
-            <TextView
-                android:id="@+id/tvProgressInfo"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/ready_to_flash"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
-
-            <ProgressBar
-                android:id="@+id/progressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:visibility="gone" />
-
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <!-- Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <Button
-            android:id="@+id/btnFlash"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="@string/flash_firmware"
-            android:drawableStart="@android:drawable/stat_sys_download"
-            style="@style/Widget.Material3.Button" />
-
-        <Button
-            android:id="@+id/btnErase"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="@string/erase_chip"
-            android:drawableStart="@android:drawable/ic_menu_delete"
-            style="@style/Widget.Material3.Button.OutlinedButton" />
-
-    </LinearLayout>
-
-    <!-- Log Output -->
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="4dp">
-
-        <LinearLayout
+        <!-- Device Status Card -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/WCH32.Card"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:layout_height="wrap_content">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/flash_log"
-                android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
-
-            <ScrollView
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1">
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
 
-                <TextView
-                    android:id="@+id/tvLog"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:text="Ready. Connect a WCH device to begin.\n"
-                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-                    android:textSize="12sp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
 
-            </ScrollView>
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="12dp"
+                        android:src="@drawable/ic_chip"
+                        android:contentDescription="@string/device_info" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/device_info"
+                        style="@style/WCH32.Text.Headline" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvDeviceStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/no_device_connected"
+                    style="@style/WCH32.Text.Status" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- File Selection Card -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/WCH32.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="12dp"
+                        android:src="@drawable/ic_document"
+                        android:contentDescription="Firmware File" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/firmware_file"
+                        style="@style/WCH32.Text.Headline" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvSelectedFile"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/no_file_selected"
+                    style="@style/WCH32.Text.Body"
+                    android:drawablePadding="8dp" />
+
+                <Button
+                    android:id="@+id/btnSelectFile"
+                    style="@style/WCH32.Button.Secondary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/select_firmware"
+                    app:icon="@drawable/ic_file_upload"
+                    app:iconGravity="start" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Progress Information Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardProgress"
+            style="@style/WCH32.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:cardBackgroundColor="?attr/colorSecondaryContainer">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/operation_progress"
+                    style="@style/WCH32.Text.Headline" />
+
+                <TextView
+                    android:id="@+id/tvProgressInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/ready_to_flash"
+                    style="@style/WCH32.Text.Body" />
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:visibility="gone"
+                    app:indicatorColor="?attr/colorPrimary"
+                    app:trackColor="?attr/colorSurfaceVariant"
+                    app:trackCornerRadius="4dp" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Action Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <Button
+                android:id="@+id/btnFlash"
+                style="@style/WCH32.Button.Primary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:enabled="false"
+                android:text="@string/flash_firmware"
+                app:icon="@drawable/ic_flash"
+                app:iconGravity="start" />
+
+            <Button
+                android:id="@+id/btnErase"
+                style="@style/WCH32.Button.Secondary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:enabled="false"
+                android:text="@string/erase_chip"
+                app:icon="@drawable/ic_erase"
+                app:iconGravity="start" />
 
         </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
 
-</LinearLayout>
+        <!-- Log Output -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/WCH32.Card"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:minHeight="300dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/flash_log"
+                    style="@style/WCH32.Text.Headline" />
+
+                <com.google.android.material.divider.MaterialDivider
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="12dp" />
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scrollbars="vertical"
+                    android:fadeScrollbars="false">
+
+                    <TextView
+                        android:id="@+id/tvLog"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="@string/app_ready"
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        android:textSize="11sp"
+                        android:lineSpacingExtra="2dp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:padding="8dp"
+                        android:background="?attr/colorSurfaceVariant"
+                        android:textIsSelectable="true" />
+
+                </ScrollView>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>

@@ -137,23 +137,47 @@ class MainActivity : AppCompatActivity() {
             
             Log.d(TAG, "Step 8: Complete initialization")
             
-            // Set initial app state
-            logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            if (WchispNative.isLibraryLoaded()) {
-                logMessage("✓ Native WCH ISP library loaded successfully")
-                logMessage("Ready to connect WCH32 devices via USB")
-            } else {
-                logMessage("⚠ Native library not available: ${WchispNative.getLoadError()}")
-                logMessage("Please ensure native library is built and included")
-            }
-            
-            binding.tvDeviceStatus.text = getString(R.string.no_device_connected)
+            updateInitialStatus()
             
             Log.d(TAG, "*** MainActivity.onCreate() COMPLETED SUCCESSFULLY ***")
             
         } catch (e: Exception) {
             Log.e(TAG, "*** CRASH in MainActivity.onCreate() ***", e)
             handleInitializationError(e)
+        }
+    }
+
+    private fun setDeviceStatus(message: String, isConnected: Boolean = false, isError: Boolean = false) {
+        val icon = when {
+            isError -> "❌"
+            isConnected -> "✅" 
+            else -> "⚪"
+        }
+        
+        val formattedMessage = "$icon $message"
+        binding.tvDeviceStatus.text = formattedMessage
+        
+        // Set text color based on status
+        val colorRes = when {
+            isError -> R.color.status_error
+            isConnected -> R.color.status_connected
+            else -> R.color.status_disconnected
+        }
+        
+        binding.tvDeviceStatus.setTextColor(ContextCompat.getColor(this, colorRes))
+    }
+
+    private fun updateInitialStatus() {
+        // Set initial app state
+        logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        if (WchispNative.isLibraryLoaded()) {
+            logMessage("✓ ${getString(R.string.native_library_loaded)}")
+            logMessage("Ready to connect WCH32 devices via USB")
+            setDeviceStatus(getString(R.string.no_device_connected))
+        } else {
+            logMessage("⚠ ${getString(R.string.native_library_not_available)}: ${WchispNative.getLoadError()}")
+            logMessage("Please ensure native library is built and included")
+            setDeviceStatus("${getString(R.string.native_library_not_available)} - Limited functionality", isError = true)
         }
     }
 
@@ -385,24 +409,23 @@ class MainActivity : AppCompatActivity() {
     private fun onDeviceConnected(device: UsbDevice) {
         try {
             connectedDevice = device
-            val deviceInfo = "🔗 Device: ${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
-            binding.tvDeviceStatus.text = deviceInfo
+            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
             logMessage("Device connected: ${device.deviceName}")
             logMessage("Vendor ID: 0x${String.format("%04X", device.vendorId)}")
             logMessage("Product ID: 0x${String.format("%04X", device.productId)}")
-            updateFlashButtonState()
             
             // Check native library status
             if (!WchispNative.isLibraryLoaded()) {
-                logMessage("WARNING: Native library not loaded - functionality limited")
+                logMessage("WARNING: ${getString(R.string.native_library_not_available)}")
                 logMessage("Reason: ${WchispNative.getLoadError()}")
-                binding.tvDeviceStatus.text = "$deviceInfo - Native library not available"
+                setDeviceStatus("$deviceName - ${getString(R.string.native_library_not_available)}", isError = true)
                 return
             }
             
             // Initialize native wchisp connection
             if (!WchispNative.safeInit()) {
                 logMessage("ERROR: Failed to initialize native library")
+                setDeviceStatus("$deviceName - Initialization failed", isError = true)
                 return
             }
             
@@ -410,6 +433,7 @@ class MainActivity : AppCompatActivity() {
             val usbConnection = usbManager?.openDevice(device)
             if (usbConnection == null) {
                 logMessage("ERROR: Failed to open USB device connection")
+                setDeviceStatus("$deviceName - Connection failed", isError = true)
                 return
             }
             
@@ -424,6 +448,7 @@ class MainActivity : AppCompatActivity() {
             if (deviceHandle <= 0) {
                 logMessage("ERROR: Failed to open device in native library")
                 usbConnection.close()
+                setDeviceStatus("$deviceName - Native library error", isError = true)
                 return
             }
             
@@ -432,16 +457,15 @@ class MainActivity : AppCompatActivity() {
             logMessage("Chip identification: $chipInfo")
             
             // Update device status with chip info
-            binding.tvDeviceStatus.text = "$deviceInfo - $chipInfo"
+            setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
+            updateFlashButtonState()
             
         } catch (e: Exception) {
             Log.w(TAG, "Error handling device connection: ${e.message}")
-            logMessage("Device connection failed: ${e.message}")
+            logMessage("${getString(R.string.device_connection_failed)}: ${e.message}")
             
-            // Set up basic device status without native functionality
-            val basicStatus = "🔗 Device: ${device.deviceName} - Connection failed"
-            binding.tvDeviceStatus.text = basicStatus
-            logMessage("Device detected but connection failed - check permissions and native library")
+            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
+            setDeviceStatus("$deviceName - ${getString(R.string.device_connection_failed)}", isError = true)
         }
     }
 
@@ -455,7 +479,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 connectedDevice = null
-                binding.tvDeviceStatus.text = getString(R.string.no_device_connected)
+                setDeviceStatus(getString(R.string.no_device_connected))
                 logMessage("Device disconnected: ${device.deviceName}")
                 updateFlashButtonState()
             } catch (e: Exception) {
@@ -603,7 +627,7 @@ class MainActivity : AppCompatActivity() {
         binding.cardProgress.visibility = View.VISIBLE
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.progress = 0
-        binding.tvProgressInfo.text = "Preparing to flash firmware..."
+        binding.tvProgressInfo.text = getString(R.string.preparing_flash)
         setOperationInProgress(true)
         
         // Perform flashing operation with coroutines for better async handling
@@ -616,7 +640,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Update UI on main thread
                 binding.progressBar.progress = 100
-                binding.tvProgressInfo.text = "Flash operation completed"
+                binding.tvProgressInfo.text = getString(R.string.operation_completed)
                 
                 if (success) {
                     logMessage("✓ Flash operation completed successfully")
@@ -630,29 +654,29 @@ class MainActivity : AppCompatActivity() {
                     
                     if (verified) {
                         logMessage("✓ Firmware verification passed")
-                        binding.tvProgressInfo.text = "Firmware verified successfully"
+                        binding.tvProgressInfo.text = "✓ Firmware verified successfully"
                     } else {
                         logMessage("⚠ Firmware verification failed")
-                        binding.tvProgressInfo.text = "Firmware verification failed"
+                        binding.tvProgressInfo.text = "⚠ Firmware verification failed"
                     }
                     
                     // Reset chip to run new firmware
-                    binding.tvProgressInfo.text = "Resetting chip..."
+                    binding.tvProgressInfo.text = getString(R.string.resetting_chip)
                     val resetSuccess = withContext(Dispatchers.IO) {
                         WchispNative.safeResetChip(deviceHandle)
                     }
                     
                     if (resetSuccess) {
-                        logMessage("✓ Chip reset completed - new firmware is running")
-                        binding.tvProgressInfo.text = getString(R.string.chip_reset_success)
+                        logMessage("✓ ${getString(R.string.chip_reset_success)}")
+                        binding.tvProgressInfo.text = "✓ ${getString(R.string.chip_reset_success)}"
                     } else {
-                        logMessage("⚠ Chip reset failed - may need manual reset")
-                        binding.tvProgressInfo.text = getString(R.string.chip_reset_failed)
+                        logMessage("⚠ ${getString(R.string.chip_reset_failed)}")
+                        binding.tvProgressInfo.text = "⚠ ${getString(R.string.chip_reset_failed)}"
                     }
                 } else {
                     val error = WchispNative.safeGetLastError()
                     logMessage("✗ Flash operation failed: $error")
-                    binding.tvProgressInfo.text = "Flash operation failed: $error"
+                    binding.tvProgressInfo.text = "✗ ${getString(R.string.operation_failed)}: $error"
                 }
                 
                 // Hide progress after delay
@@ -661,7 +685,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error during flash operation", e)
                 logMessage("✗ Flash operation failed: ${e.message}")
-                binding.tvProgressInfo.text = "Flash operation failed: ${e.message}"
+                binding.tvProgressInfo.text = "✗ ${getString(R.string.operation_failed)}: ${e.message}"
                 delay(3000)
             } finally {
                 // Always restore UI state

@@ -139,11 +139,55 @@ class MainActivity : AppCompatActivity() {
             
             updateInitialStatus()
             
+            // Check if launched from USB device attachment
+            handleUsbDeviceIntent(intent)
+            
             Log.d(TAG, "*** MainActivity.onCreate() COMPLETED SUCCESSFULLY ***")
             
         } catch (e: Exception) {
             Log.e(TAG, "*** CRASH in MainActivity.onCreate() ***", e)
             handleInitializationError(e)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Log.d(TAG, "onNewIntent called with action: ${intent.action}")
+        handleUsbDeviceIntent(intent)
+    }
+    
+    private fun handleUsbDeviceIntent(intent: Intent) {
+        try {
+            when (intent.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    
+                    device?.let {
+                        logMessage("🔌 USB device attached: ${it.deviceName}")
+                        logMessage("Device VID:${String.format("0x%04X", it.vendorId)}, PID:${String.format("0x%04X", it.productId)}")
+                        
+                        if (isSupportedDevice(it)) {
+                            logMessage("✅ Supported WCH device detected!")
+                            checkAndRequestDevice(it)
+                        } else {
+                            logMessage("❌ Unsupported device - WCH32 Flasher only supports WCH ISP devices")
+                            logMessage("Supported: VID:0x4348 or 0x1A86, PID:0x55E0")
+                        }
+                    }
+                }
+                else -> {
+                    // App was launched normally or from other intents
+                    Log.d(TAG, "App launched with intent action: ${intent.action}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error handling USB device intent: ${e.message}")
+            logMessage("Error processing USB device connection: ${e.message}")
         }
     }
 
@@ -272,7 +316,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun safeOpenFilePicker() {
         try {
-            filePickerLauncher.launch(arrayOf("*/*"))
+            // Restrict to firmware file types only
+            val mimeTypes = arrayOf(
+                "application/octet-stream", // For .bin files
+                "text/plain", // For .hex files
+                "*/*" // Fallback for .elf and other firmware files
+            )
+            filePickerLauncher.launch(mimeTypes)
         } catch (e: Exception) {
             Log.w(TAG, "Error opening file picker: ${e.message}")
             logMessage("File picker error: ${e.message}")
@@ -360,10 +410,26 @@ class MainActivity : AppCompatActivity() {
             
             Log.d(TAG, "Checking existing USB devices safely")
             val devices = usbManager!!.deviceList
+            
+            if (devices.isEmpty()) {
+                Log.d(TAG, "No USB devices connected")
+                logMessage("No USB devices detected")
+                logMessage("Connect a WCH device to begin programming")
+                return
+            }
+            
+            logMessage("Found ${devices.size} USB device(s), checking for WCH devices...")
+            
             var foundDevice = false
+            var supportedDevicesFound = 0
             
             for (device in devices.values) {
+                val deviceInfo = "VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}"
+                logMessage("📱 USB Device: ${device.deviceName} ($deviceInfo)")
+                
                 if (isSupportedDevice(device)) {
+                    supportedDevicesFound++
+                    logMessage("✅ Supported WCH device found: ${device.deviceName}")
                     checkAndRequestDevice(device)
                     foundDevice = true
                     break // Handle first supported device found
@@ -371,11 +437,20 @@ class MainActivity : AppCompatActivity() {
             }
             
             if (!foundDevice) {
-                Log.d(TAG, "No supported WCH devices found")
+                if (supportedDevicesFound == 0) {
+                    Log.d(TAG, "No supported WCH devices found")
+                    logMessage("❌ No supported WCH devices found")
+                    logMessage("WCH32 Flasher supports devices with:")
+                    logMessage("• VID: 0x4348 (WCH) or 0x1A86 (QinHeng), PID: 0x55E0")
+                    logMessage("Please connect a compatible WCH32 device")
+                } else {
+                    Log.d(TAG, "Found $supportedDevicesFound supported device(s) but none connected")
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error checking existing devices: ${e.message}")
-            logMessage("Device detection failed - ensure USB host support is available")
+            logMessage("❌ Device detection failed: ${e.message}") 
+            logMessage("This may be due to USB host support limitations")
         }
     }
 
@@ -386,23 +461,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndRequestDevice(device: UsbDevice) {
         if (!isSupportedDevice(device) || usbManager == null) {
+            if (!isSupportedDevice(device)) {
+                logMessage("❌ Unsupported device: VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}")
+                logMessage("WCH32 Flasher supports: VID:0x4348 or 0x1A86, PID:0x55E0")
+            }
             return
         }
 
         try {
             if (usbManager!!.hasPermission(device)) {
+                logMessage("✅ USB permission already granted for ${device.deviceName}")
                 onDeviceConnected(device)
             } else {
+                logMessage("🔐 Requesting USB permission for ${device.deviceName}")
+                logMessage("Please allow USB access in the system dialog")
+                
                 val permissionIntent = PendingIntent.getBroadcast(
                     this, 0, Intent(ACTION_USB_PERMISSION), 
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 usbManager!!.requestPermission(device, permissionIntent)
-                logMessage("Requesting USB permission for device: ${device.deviceName}")
+                
+                // Update UI to show permission request
+                setDeviceStatus("Requesting permission for ${device.deviceName}...", isConnected = false)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting device permission: ${e.message}")
-            logMessage("USB permission request failed - device access denied")
+            logMessage("❌ USB permission request failed: ${e.message}")
+            setDeviceStatus("Permission request failed for ${device.deviceName}", isError = true)
         }
     }
 
@@ -410,21 +496,25 @@ class MainActivity : AppCompatActivity() {
         try {
             connectedDevice = device
             val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
-            logMessage("Device connected: ${device.deviceName}")
-            logMessage("Vendor ID: 0x${String.format("%04X", device.vendorId)}")
-            logMessage("Product ID: 0x${String.format("%04X", device.productId)}")
+            logMessage("✅ Device connected: ${device.deviceName}")
+            logMessage("Device details: VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}")
             
-            // Check native library status
+            // Check native library status first
             if (!WchispNative.isLibraryLoaded()) {
-                logMessage("WARNING: ${getString(R.string.native_library_not_available)}")
+                logMessage("⚠ WARNING: ${getString(R.string.native_library_not_available)}")
                 logMessage("Reason: ${WchispNative.getLoadError()}")
                 setDeviceStatus("$deviceName - ${getString(R.string.native_library_not_available)}", isError = true)
+                logMessage("Device connected but native library unavailable - limited functionality")
+                updateFlashButtonState()
                 return
             }
             
+            // Show connection in progress
+            setDeviceStatus("Connecting to $deviceName...", isConnected = false)
+            
             // Initialize native wchisp connection
             if (!WchispNative.safeInit()) {
-                logMessage("ERROR: Failed to initialize native library")
+                logMessage("❌ ERROR: Failed to initialize native library")
                 setDeviceStatus("$deviceName - Initialization failed", isError = true)
                 return
             }
@@ -432,10 +522,13 @@ class MainActivity : AppCompatActivity() {
             // Open device connection using USB Host API
             val usbConnection = usbManager?.openDevice(device)
             if (usbConnection == null) {
-                logMessage("ERROR: Failed to open USB device connection")
+                logMessage("❌ ERROR: Failed to open USB device connection")
+                logMessage("This may be due to insufficient permissions or device access restrictions")
                 setDeviceStatus("$deviceName - Connection failed", isError = true)
                 return
             }
+            
+            logMessage("🔗 USB connection established, opening device in native library...")
             
             // Get the device handle from native library
             deviceHandle = WchispNative.safeOpenDevice(
@@ -446,26 +539,31 @@ class MainActivity : AppCompatActivity() {
             )
             
             if (deviceHandle <= 0) {
-                logMessage("ERROR: Failed to open device in native library")
+                logMessage("❌ ERROR: Failed to open device in native library")
+                logMessage("Error: ${WchispNative.safeGetLastError()}")
                 usbConnection.close()
                 setDeviceStatus("$deviceName - Native library error", isError = true)
                 return
             }
             
+            logMessage("🔧 Device opened successfully, identifying chip...")
+            
             // Identify the connected chip
             val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
-            logMessage("Chip identification: $chipInfo")
+            logMessage("✅ Chip identification: $chipInfo")
             
-            // Update device status with chip info
+            // Update device status with chip info - successful connection
             setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
+            logMessage("🎉 Device ready for programming operations!")
             updateFlashButtonState()
             
         } catch (e: Exception) {
             Log.w(TAG, "Error handling device connection: ${e.message}")
-            logMessage("${getString(R.string.device_connection_failed)}: ${e.message}")
+            logMessage("❌ ${getString(R.string.device_connection_failed)}: ${e.message}")
             
             val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
             setDeviceStatus("$deviceName - ${getString(R.string.device_connection_failed)}", isError = true)
+            logMessage("Please try disconnecting and reconnecting the device")
         }
     }
 
@@ -494,39 +592,86 @@ class MainActivity : AppCompatActivity() {
             val displayName = fileName ?: uri.lastPathSegment ?: "Unknown file"
             binding.tvSelectedFile.text = displayName
             
-            // Validate firmware file
-            validateFirmwareFile(uri, displayName)
+            // Reset text color first
+            binding.tvSelectedFile.setTextColor(ContextCompat.getColor(this, R.color.md_theme_light_onSurface))
             
-            logMessage("Selected firmware file: $displayName")
+            // Validate firmware file and update UI accordingly
+            val isValid = validateFirmwareFile(uri, displayName)
+            
+            if (isValid) {
+                logMessage("✓ Selected firmware file: $displayName")
+            } else {
+                logMessage("❌ Invalid firmware file selected: $displayName")
+                // Clear the selection if invalid
+                selectedFirmwareUri = null
+            }
+            
+            updateFlashButtonState()
         } catch (e: Exception) {
             Log.w(TAG, "Error reading file info: ${e.message}")
-            logMessage("Error reading file info: ${e.message}")
+            logMessage("❌ Error reading file info: ${e.message}")
         }
     }
     
-    private fun validateFirmwareFile(uri: Uri, fileName: String) {
+    private fun validateFirmwareFile(uri: Uri, fileName: String): Boolean {
         try {
             val extension = fileName.substringAfterLast('.', "").lowercase()
-            when (extension) {
-                "bin" -> logMessage("✓ Binary firmware file detected")
-                "hex" -> logMessage("✓ Intel HEX firmware file detected")
-                "elf" -> logMessage("✓ ELF firmware file detected")
-                else -> logMessage("⚠ Unknown file type - supported: .bin, .hex, .elf")
+            val isValidExtension = when (extension) {
+                "bin" -> {
+                    logMessage("✓ Binary firmware file detected")
+                    true
+                }
+                "hex" -> {
+                    logMessage("✓ Intel HEX firmware file detected")
+                    true
+                }
+                "elf" -> {
+                    logMessage("✓ ELF firmware file detected")
+                    true
+                }
+                else -> {
+                    logMessage("❌ ERROR: Unsupported file type '.$extension'")
+                    logMessage("Supported file types: .bin (binary), .hex (Intel HEX), .elf (ELF)")
+                    binding.tvSelectedFile.text = "$fileName (UNSUPPORTED FORMAT)"
+                    binding.tvSelectedFile.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+                    false
+                }
             }
             
-            // Check file size
+            if (!isValidExtension) {
+                return false
+            }
+            
+            // Check file size for valid files
             contentResolver.openInputStream(uri)?.use { inputStream ->
                 val size = inputStream.available()
                 when {
-                    size == 0 -> logMessage("⚠ Warning: File appears to be empty")
-                    size > 1024 * 1024 -> logMessage("⚠ Warning: Large file (${size / 1024}KB) - verify this is correct")
-                    size < 100 -> logMessage("⚠ Warning: Very small file (${size} bytes) - verify this is correct")
-                    else -> logMessage("✓ File size: ${size} bytes")
+                    size == 0 -> {
+                        logMessage("❌ ERROR: File is empty")
+                        return false
+                    }
+                    size > 2 * 1024 * 1024 -> { // 2MB limit
+                        logMessage("❌ ERROR: File too large (${size / 1024}KB) - Maximum 2MB supported")
+                        return false
+                    }
+                    size < 32 -> {
+                        logMessage("❌ ERROR: File too small (${size} bytes) - Minimum 32 bytes required")
+                        return false
+                    }
+                    size > 1024 * 1024 -> {
+                        logMessage("⚠ Warning: Large file (${size / 1024}KB) - This may take longer to flash")
+                    }
+                    else -> {
+                        logMessage("✓ File size: ${if (size > 1024) "${size / 1024}KB" else "${size} bytes"}")
+                    }
                 }
             }
+            
+            return true
         } catch (e: Exception) {
             Log.w(TAG, "Error validating firmware file: ${e.message}")
-            logMessage("⚠ Could not validate firmware file: ${e.message}")
+            logMessage("❌ ERROR: File validation failed: ${e.message}")
+            return false
         }
     }
 

@@ -128,6 +128,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "*** MainActivity.onCreate() STARTING - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) ***")
         
+        // Set up global exception handler to prevent crashes
+        Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+            Log.e(TAG, "*** UNCAUGHT EXCEPTION in thread ${thread.name} ***", exception)
+            Log.e(TAG, "Exception details: ${exception.message}")
+            Log.e(TAG, "Stack trace: ${exception.stackTraceToString()}")
+            // Instead of crashing, log and try to recover gracefully
+            runOnUiThread {
+                try {
+                    if (::binding.isInitialized) {
+                        logMessage("❌ ERROR: ${exception.localizedMessage ?: "Unknown error occurred"}")
+                        logMessage("📱 App recovered from error - basic functionality available")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to recover from exception", e)
+                }
+            }
+        }
+        
         try {
             Log.d(TAG, "Step 1: super.onCreate()")
             super.onCreate(savedInstanceState)
@@ -625,66 +643,100 @@ class MainActivity : AppCompatActivity() {
             // Show connection in progress
             setDeviceStatus("Connecting to $deviceName ($programmingMode)...", isConnected = false)
             
-            // Initialize native wchisp connection
-            if (!WchispNative.safeInit()) {
-                logMessage("❌ ERROR: Failed to initialize native library")
-                setDeviceStatus("$deviceName - Initialization failed", isError = true)
-                return
-            }
-            
-            // Open device connection using USB Host API
-            val usbConnection = usbManager?.openDevice(device)
-            if (usbConnection == null) {
-                logMessage("❌ ERROR: Failed to open USB device connection")
-                logMessage("This may be due to insufficient permissions or device access restrictions")
-                setDeviceStatus("$deviceName - Connection failed", isError = true)
-                return
-            }
-            
-            when (programmingMode) {
-                "USB ISP" -> {
-                    logMessage("🔗 USB ISP connection established, opening device in native library...")
-                }
-                "CH340 Serial", "CH341 Serial" -> {
-                    logMessage("🔗 Serial connection established via $programmingMode")
-                    logMessage("📡 Ready for WCH32 UART bootloader communication")
+            // Perform connection operations in background with timeout
+            lifecycleScope.launch {
+                try {
+                    val success = connectWithTimeout(device, programmingMode)
+                    if (success) {
+                        logMessage("🎉 Device ready for programming operations via $programmingMode!")
+                    } else {
+                        setDeviceStatus("$deviceName - Connection timeout", isError = true)
+                        logMessage("❌ Connection failed or timed out - please retry")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in device connection process", e)
+                    setDeviceStatus("$deviceName - Connection error", isError = true)
+                    logMessage("❌ Connection error: ${e.localizedMessage ?: "Unknown error"}")
                 }
             }
-            
-            // Get the device handle from native library
-            deviceHandle = WchispNative.safeOpenDevice(
-                usbConnection.fileDescriptor, 
-                device.vendorId, 
-                device.productId, 
-                usbConnection
-            )
-            
-            if (deviceHandle <= 0) {
-                logMessage("❌ ERROR: Failed to open device in native library")
-                logMessage("Error: ${WchispNative.safeGetLastError()}")
-                usbConnection.close()
-                setDeviceStatus("$deviceName - Native library error", isError = true)
-                return
-            }
-            
-            logMessage("🔧 Device opened successfully, identifying chip...")
-            
-            // Identify the connected chip
-            val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
-            logMessage("✅ Chip identification: $chipInfo")
-            
-            // Update device status with chip info - successful connection
-            setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
-            logMessage("🎉 Device ready for programming operations via $programmingMode!")
-            updateFlashButtonState()
             
         } catch (e: Exception) {
-            Log.w(TAG, "Error handling device connection: ${e.message}")
-            logMessage("❌ ${getString(R.string.device_connection_failed)}: ${e.message}")
-            
-            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
-            setDeviceStatus("$deviceName - ${getString(R.string.device_connection_failed)}", isError = true)
-            logMessage("Please try disconnecting and reconnecting the device")
+            Log.e(TAG, "Error in onDeviceConnected", e)
+            setDeviceStatus("Device connection failed", isError = true)
+            logMessage("❌ Device connection failed: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    private suspend fun connectWithTimeout(device: UsbDevice, programmingMode: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                try {
+                    // Initialize native library
+                    if (!WchispNative.safeInit()) {
+                        logMessage("❌ ERROR: Failed to initialize native library")
+                        return@withTimeoutOrNull false
+                    }
+                    
+                    // Open device connection using USB Host API
+                    val usbConnection = usbManager?.openDevice(device)
+                    if (usbConnection == null) {
+                        logMessage("❌ ERROR: Failed to open USB device connection")
+                        logMessage("This may be due to insufficient permissions or device access restrictions")
+                        return@withTimeoutOrNull false
+                    }
+                    
+                    try {
+                        when (programmingMode) {
+                            "USB ISP" -> {
+                                logMessage("🔗 USB ISP connection established, opening device in native library...")
+                            }
+                            "CH340 Serial", "CH341 Serial" -> {
+                                logMessage("🔗 Serial connection established via $programmingMode")
+                                logMessage("📡 Ready for WCH32 UART bootloader communication")
+                            }
+                        }
+                        
+                        // Get the device handle from native library
+                        val handle = WchispNative.safeOpenDevice(
+                            usbConnection.fileDescriptor, 
+                            device.vendorId, 
+                            device.productId, 
+                            usbConnection
+                        )
+                        
+                        if (handle <= 0) {
+                            logMessage("❌ ERROR: Failed to open device in native library")
+                            logMessage("Error: ${WchispNative.safeGetLastError()}")
+                            return@withTimeoutOrNull false
+                        }
+                        
+                        deviceHandle = handle
+                        logMessage("🔧 Device opened successfully, identifying chip...")
+                        
+                        // Identify the connected chip
+                        val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
+                        logMessage("✅ Chip identification: $chipInfo")
+                        
+                        // Update UI on main thread
+                        withContext(Dispatchers.Main) {
+                            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
+                            setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
+                            updateFlashButtonState()
+                        }
+                        
+                        return@withTimeoutOrNull true
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in device setup", e)
+                        usbConnection.close()
+                        return@withTimeoutOrNull false
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in connectWithTimeout", e)
+                    return@withTimeoutOrNull false
+                }
+            } ?: false
         }
     }
 

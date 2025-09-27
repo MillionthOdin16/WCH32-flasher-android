@@ -7,17 +7,20 @@
     android:fillViewport="true"
     tools:context=".MainActivity">
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:padding="16dp">
 
         <!-- Device Status Card -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardDeviceStatus"
             style="@style/WCH32.Card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -29,7 +32,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
 
                     <ImageView
                         android:layout_width="24dp"
@@ -51,18 +55,24 @@
                     android:id="@+id/tvDeviceStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/no_device_connected"
-                    style="@style/WCH32.Text.Status" />
+                    android:text="@string/status_ready"
+                    android:textColor="?attr/colorOnSurface"
+                    style="@style/WCH32.Text.Body" />
 
             </LinearLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <!-- File Selection Card -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardFileSelection"
             style="@style/WCH32.Card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:layout_constraintTop_toBottomOf="@id/cardDeviceStatus"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -74,14 +84,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
 
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:layout_marginEnd="12dp"
                         android:src="@drawable/ic_document"
-                        android:contentDescription="Firmware File" />
+                        android:contentDescription="@string/select_firmware" />
 
                     <TextView
                         android:layout_width="0dp"
@@ -96,22 +107,22 @@
                     android:id="@+id/tvSelectedFile"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
                     android:text="@string/no_file_selected"
-                    style="@style/WCH32.Text.Body"
-                    android:drawablePadding="8dp" />
+                    android:layout_marginBottom="16dp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    style="@style/WCH32.Text.Body" />
 
-                <Button
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSelectFile"
-                    style="@style/WCH32.Button.Secondary"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
                     android:text="@string/select_firmware"
                     app:icon="@drawable/ic_file_upload"
-                    app:iconGravity="start" />
+                    app:iconGravity="textStart"
+                    style="@style/WCH32.Button.Secondary" />
 
             </LinearLayout>
+
         </com.google.android.material.card.MaterialCardView>
 
         <!-- Progress Information Card -->
@@ -120,8 +131,12 @@
             style="@style/WCH32.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone"
-            app:cardBackgroundColor="?attr/colorSecondaryContainer">
+            app:cardBackgroundColor="?attr/colorSecondaryContainer"
+            app:layout_constraintTop_toBottomOf="@id/cardFileSelection"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -133,21 +148,21 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/operation_progress"
+                    android:layout_marginBottom="12dp"
                     style="@style/WCH32.Text.Headline" />
 
                 <TextView
                     android:id="@+id/tvProgressInfo"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
                     android:text="@string/ready_to_flash"
+                    android:layout_marginBottom="16dp"
                     style="@style/WCH32.Text.Body" />
 
                 <com.google.android.material.progressindicator.LinearProgressIndicator
                     android:id="@+id/progressBar"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
                     android:visibility="gone"
                     app:indicatorColor="?attr/colorPrimary"
                     app:trackColor="?attr/colorSurfaceVariant"
@@ -157,46 +172,57 @@
         </com.google.android.material.card.MaterialCardView>
 
         <!-- Action Buttons -->
-        <LinearLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/layoutButtons"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:orientation="horizontal"
-            android:weightSum="2">
+            android:layout_marginTop="16dp"
+            app:layout_constraintTop_toBottomOf="@id/cardProgress"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnFlash"
-                style="@style/WCH32.Button.Primary"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="56dp"
                 android:layout_marginEnd="8dp"
-                android:layout_weight="1"
-                android:enabled="false"
                 android:text="@string/flash_firmware"
-                app:icon="@drawable/ic_flash"
-                app:iconGravity="start" />
-
-            <Button
-                android:id="@+id/btnErase"
-                style="@style/WCH32.Button.Secondary"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
                 android:enabled="false"
-                android:text="@string/erase_chip"
-                app:icon="@drawable/ic_erase"
-                app:iconGravity="start" />
+                app:icon="@drawable/ic_flash"
+                app:iconGravity="textStart"
+                style="@style/WCH32.Button.Primary"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/btnErase" />
 
-        </LinearLayout>
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnErase"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="8dp"
+                android:text="@string/erase_chip"
+                android:enabled="false"
+                app:icon="@drawable/ic_erase"
+                app:iconGravity="textStart"
+                style="@style/WCH32.Button.Secondary"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toEndOf="@id/btnFlash"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- Log Output -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardLog"
             style="@style/WCH32.Card"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:minHeight="300dp">
+            android:layout_height="300dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            app:layout_constraintTop_toBottomOf="@id/layoutButtons"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -208,12 +234,12 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/flash_log"
+                    android:layout_marginBottom="8dp"
                     style="@style/WCH32.Text.Headline" />
 
                 <com.google.android.material.divider.MaterialDivider
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
                     android:layout_marginBottom="12dp" />
 
                 <ScrollView
@@ -242,5 +268,6 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
 </ScrollView>

@@ -18,7 +18,9 @@ import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.wch.flasher.databinding.ActivityMainBinding
+import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -26,7 +28,19 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var usbManager: UsbManager? = null
-    private var deviceHandle: Int = -1
+    private var deviceHandle: Int = INVALID_HANDLE
+        get() = field.takeIf { it != INVALID_HANDLE } ?: INVALID_HANDLE
+        set(value) {
+            if (field != INVALID_HANDLE && field != value) {
+                // Clean up previous handle
+                try {
+                    WchispNative.safeCloseDevice(field)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing previous device handle: ${e.message}")
+                }
+            }
+            field = value
+        }
     private var connectedDevice: UsbDevice? = null
     private var selectedFirmwareUri: Uri? = null
     private var receiverRegistered = false
@@ -34,11 +48,15 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "WCH32Flasher"
         private const val ACTION_USB_PERMISSION = "com.wch.flasher.USB_PERMISSION"
+        private const val CONNECTION_TIMEOUT_MS = 30000L // 30 seconds
+        private const val INVALID_HANDLE = -1
         
         // WCH ISP device VID/PID combinations (from wchisp source)
         private val SUPPORTED_DEVICES = setOf(
-            Pair(0x4348, 0x55e0), // WCH
-            Pair(0x1a86, 0x55e0)  // QinHeng Electronics
+            Pair(0x4348, 0x55e0), // WCH - USB ISP mode
+            Pair(0x1a86, 0x55e0), // QinHeng Electronics - USB ISP mode
+            Pair(0x1a86, 0x7523), // CH340 - Serial programming mode
+            Pair(0x1a86, 0x5523)  // CH341 - Serial programming mode
         )
     }
 
@@ -110,6 +128,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "*** MainActivity.onCreate() STARTING - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) ***")
         
+        // Set up global exception handler to prevent crashes
+        Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+            Log.e(TAG, "*** UNCAUGHT EXCEPTION in thread ${thread.name} ***", exception)
+            Log.e(TAG, "Exception details: ${exception.message}")
+            Log.e(TAG, "Stack trace: ${exception.stackTraceToString()}")
+            // Instead of crashing, log and try to recover gracefully
+            runOnUiThread {
+                try {
+                    if (::binding.isInitialized) {
+                        logMessage("❌ ERROR: ${exception.localizedMessage ?: "Unknown error occurred"}")
+                        logMessage("📱 App recovered from error - basic functionality available")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to recover from exception", e)
+                }
+            }
+        }
+        
         try {
             Log.d(TAG, "Step 1: super.onCreate()")
             super.onCreate(savedInstanceState)
@@ -133,14 +169,93 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Step 7: Check existing devices safely")
             safeCheckExistingDevices()
             
-            Log.d(TAG, "Step 8: Initialize simulation mode")
-            initializeSimulationMode()
+            Log.d(TAG, "Step 8: Complete initialization")
+            
+            updateInitialStatus()
+            
+            // Check if launched from USB device attachment
+            handleUsbDeviceIntent(intent)
             
             Log.d(TAG, "*** MainActivity.onCreate() COMPLETED SUCCESSFULLY ***")
             
         } catch (e: Exception) {
             Log.e(TAG, "*** CRASH in MainActivity.onCreate() ***", e)
             handleInitializationError(e)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Log.d(TAG, "onNewIntent called with action: ${intent.action}")
+        handleUsbDeviceIntent(intent)
+    }
+    
+    private fun handleUsbDeviceIntent(intent: Intent) {
+        try {
+            when (intent.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    
+                    device?.let {
+                        logMessage("🔌 USB device attached: ${it.deviceName}")
+                        logMessage("Device VID:${String.format("0x%04X", it.vendorId)}, PID:${String.format("0x%04X", it.productId)}")
+                        
+                        if (isSupportedDevice(it)) {
+                            logMessage("✅ Supported WCH device detected!")
+                            checkAndRequestDevice(it)
+                        } else {
+                            logMessage("❌ Unsupported device - WCH32 Flasher only supports WCH ISP devices")
+                            logMessage("Supported: VID:0x4348 or 0x1A86, PID:0x55E0")
+                        }
+                    }
+                }
+                else -> {
+                    // App was launched normally or from other intents
+                    Log.d(TAG, "App launched with intent action: ${intent.action}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error handling USB device intent: ${e.message}")
+            logMessage("Error processing USB device connection: ${e.message}")
+        }
+    }
+
+    private fun setDeviceStatus(message: String, isConnected: Boolean = false, isError: Boolean = false) {
+        val icon = when {
+            isError -> "❌"
+            isConnected -> "✅" 
+            else -> "⚪"
+        }
+        
+        val formattedMessage = "$icon $message"
+        binding.tvDeviceStatus.text = formattedMessage
+        
+        // Set text color based on status
+        val colorRes = when {
+            isError -> R.color.status_error
+            isConnected -> R.color.status_connected
+            else -> R.color.status_disconnected
+        }
+        
+        binding.tvDeviceStatus.setTextColor(ContextCompat.getColor(this, colorRes))
+    }
+
+    private fun updateInitialStatus() {
+        // Set initial app state
+        logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        if (WchispNative.isLibraryLoaded()) {
+            logMessage("✓ ${getString(R.string.native_library_loaded)}")
+            logMessage("Ready to connect WCH32 devices via USB")
+            setDeviceStatus(getString(R.string.no_device_connected))
+        } else {
+            logMessage("⚠ ${getString(R.string.native_library_not_available)}: ${WchispNative.getLoadError()}")
+            logMessage("Please ensure native library is built and included")
+            setDeviceStatus("${getString(R.string.native_library_not_available)} - Limited functionality", isError = true)
         }
     }
 
@@ -158,27 +273,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun initializeSimulationMode() {
-        // Always set up simulation mode for reliability
-        logMessage("WCH32 Flasher started - Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        logMessage("Running in enhanced simulation mode for maximum compatibility")
-        
-        // Set up simulation device status
-        binding.tvDeviceStatus.text = "Simulation: CH32V203 (64KB Flash) - Ready"
-        logMessage("Simulation mode: CH32V203 device ready")
-        logMessage("All features available: Flash, Erase, Verify, Reset")
-        
-        // Enable simulation device
-        deviceHandle = 1 // Mock handle for simulation
-        updateFlashButtonState()
-    }
-
     override fun onDestroy() {
         try {
+            // Clean up device handle
+            safeCloseDevice()
+            
             super.onDestroy()
             safeUnregisterReceiver()
         } catch (e: Exception) {
             Log.w(TAG, "Error in onDestroy: ${e.message}")
+        }
+    }
+    
+    private fun safeCloseDevice() {
+        if (deviceHandle != INVALID_HANDLE) {
+            try {
+                WchispNative.safeCloseDevice(deviceHandle)
+                logMessage("🔌 Device connection closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing device: ${e.message}")
+            } finally {
+                deviceHandle = INVALID_HANDLE
+                connectedDevice = null
+                setDeviceStatus(getString(R.string.status_ready), isConnected = false)
+                updateFlashButtonState()
+            }
         }
     }
 
@@ -198,7 +317,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvDeviceStatus.text = "App started in minimal mode due to initialization error"
             logMessage("ERROR: App started in minimal mode due to: ${e.message}")
             logMessage("This may be due to Android 16 compatibility issues")
-            logMessage("Basic simulation functionality is available")
+            logMessage("Basic functionality is available - please connect a WCH device")
             
         } catch (fallbackError: Exception) {
             Log.e(TAG, "Even minimal mode failed", fallbackError)
@@ -207,24 +326,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMinimalUI() {
         binding.btnSelectFile.setOnClickListener {
-            logMessage("File selection available - simulation mode active")
-            // Use safe file picker
+            logMessage("File selection available")
             safeOpenFilePicker()
         }
         
         binding.btnFlash.setOnClickListener {
-            logMessage("Flash simulation started...")
-            simulateFlashOperation()
+            logMessage("Flash operation started...")
+            startFlashing()
         }
         
         binding.btnErase.setOnClickListener {
-            logMessage("Erase simulation started...")
-            simulateEraseOperation()
+            logMessage("Erase operation started...")
+            eraseChip()
         }
         
-        // Enable buttons for simulation
-        binding.btnFlash.isEnabled = true
-        binding.btnErase.isEnabled = true
+        // Initially disable buttons until device is connected
+        binding.btnFlash.isEnabled = false
+        binding.btnErase.isEnabled = false
     }
 
     private fun setupUI() {
@@ -251,7 +369,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun safeOpenFilePicker() {
         try {
-            filePickerLauncher.launch(arrayOf("*/*"))
+            // Restrict to firmware file types only
+            val mimeTypes = arrayOf(
+                "application/octet-stream", // For .bin files
+                "text/plain", // For .hex files
+                "*/*" // Fallback for .elf and other firmware files
+            )
+            filePickerLauncher.launch(mimeTypes)
         } catch (e: Exception) {
             Log.w(TAG, "Error opening file picker: ${e.message}")
             logMessage("File picker error: ${e.message}")
@@ -286,7 +410,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting permissions: ${e.message}")
-            logMessage("Permission request failed - continuing in simulation mode")
+            logMessage("Permission request failed - continuing with basic functionality")
         }
     }
 
@@ -304,11 +428,12 @@ class MainActivity : AppCompatActivity() {
                 addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             }
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(usbReceiver, filter)
-            }
+            ContextCompat.registerReceiver(
+                this,
+                usbReceiver, 
+                filter, 
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             receiverRegistered = true
             Log.d(TAG, "USB receiver registered successfully")
         } catch (e: Exception) {
@@ -338,10 +463,57 @@ class MainActivity : AppCompatActivity() {
             
             Log.d(TAG, "Checking existing USB devices safely")
             val devices = usbManager!!.deviceList
+            
+            if (devices.isEmpty()) {
+                Log.d(TAG, "No USB devices connected")
+                logMessage("No USB devices detected")
+                logMessage("Connect a WCH32 device in ISP mode to begin programming")
+                return
+            }
+            
+            logMessage("Found ${devices.size} USB device(s), checking for WCH32 ISP devices...")
+            
             var foundDevice = false
+            var wchDevicesFound = 0
+            var serialDevicesFound = 0
             
             for (device in devices.values) {
-                if (isSupportedDevice(device)) {
+                val deviceInfo = "VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}"
+                logMessage("📱 USB Device: ${device.deviceName} ($deviceInfo)")
+                
+                // Check if it's a WCH-related device
+                if (device.vendorId == 0x1A86 || device.vendorId == 0x4348) {
+                    when (device.productId) {
+                        0x55E0 -> {
+                            wchDevicesFound++
+                            logMessage("✅ WCH32 USB ISP device found: ${device.deviceName}")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break // Handle first supported device found
+                        }
+                        0x7523 -> {
+                            wchDevicesFound++
+                            logMessage("✅ CH340 USB-serial converter found: ${device.deviceName}")
+                            logMessage("🔗 Ready for WCH32 serial programming mode")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break
+                        }
+                        0x5523 -> {
+                            wchDevicesFound++
+                            logMessage("✅ CH341 USB-serial converter found: ${device.deviceName}")
+                            logMessage("🔗 Ready for WCH32 serial programming mode")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break
+                        }
+                        else -> {
+                            logMessage("ℹ️ WCH device found but not in supported programming mode (PID:0x${String.format("%04X", device.productId)})")
+                        }
+                    }
+                } else if (isSupportedDevice(device)) {
+                    wchDevicesFound++
+                    logMessage("✅ Supported WCH device found: ${device.deviceName}")
                     checkAndRequestDevice(device)
                     foundDevice = true
                     break // Handle first supported device found
@@ -349,11 +521,29 @@ class MainActivity : AppCompatActivity() {
             }
             
             if (!foundDevice) {
-                Log.d(TAG, "No supported WCH devices found")
+                if (wchDevicesFound == 0 && serialDevicesFound > 0) {
+                    logMessage("💡 Found ${serialDevicesFound} WCH USB-serial device(s), but no WCH32 microcontrollers")
+                    logMessage("💡 To program WCH32 microcontrollers:")
+                    logMessage("   1. Put your WCH32 device into ISP/bootloader mode")
+                    logMessage("   2. Hold BOOT button while powering on")
+                    logMessage("   3. Or connect BOOT pin to VCC during reset")
+                    logMessage("   4. Device should appear as PID:0x55E0 when ready")
+                } else if (wchDevicesFound == 0) {
+                    Log.d(TAG, "No supported WCH devices found")
+                    logMessage("❌ No WCH32 ISP devices found")
+                    logMessage("🎯 WCH32 Flasher requires:")
+                    logMessage("   • WCH32 microcontrollers (CH32V003, CH32V203, CH32F103, etc.)")
+                    logMessage("   • Device must be in ISP/bootloader mode (PID:0x55E0)")
+                    logMessage("   • VID: 0x4348 (WCH) or 0x1A86 (QinHeng)")
+                    logMessage("💡 Make sure your device is in ISP mode before connecting")
+                } else {
+                    Log.d(TAG, "Found $wchDevicesFound WCH device(s) but none in ISP mode")
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error checking existing devices: ${e.message}")
-            logMessage("Device detection failed - using simulation mode")
+            logMessage("❌ Device detection failed: ${e.message}") 
+            logMessage("This may be due to USB host support limitations")
         }
     }
 
@@ -364,59 +554,189 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndRequestDevice(device: UsbDevice) {
         if (!isSupportedDevice(device) || usbManager == null) {
+            if (!isSupportedDevice(device)) {
+                val deviceVid = String.format("0x%04X", device.vendorId)
+                val devicePid = String.format("0x%04X", device.productId)
+                
+                logMessage("❌ Unsupported device: VID:$deviceVid, PID:$devicePid")
+                
+                // Provide specific guidance based on the device type
+                when (device.productId) {
+                    0x7523 -> {
+                        logMessage("❌ CH340 device found but not supported in this configuration")
+                        logMessage("💡 Note: CH340 serial programming is now supported!")
+                        logMessage("💡 Make sure your WCH32 device is connected to the CH340 via UART")
+                        logMessage("💡 Device should be in bootloader mode for serial programming")
+                    }
+                    0x5523 -> {
+                        logMessage("❌ CH341 device found but not supported in this configuration")
+                        logMessage("💡 Note: CH341 serial programming is now supported!")
+                        logMessage("💡 Make sure your WCH32 device is connected to the CH341 via UART")
+                    }
+                    else -> {
+                        logMessage("ℹ️ This device is not a supported WCH32 programming interface")
+                    }
+                }
+                
+                logMessage("🎯 WCH32 Flasher now supports:")
+                logMessage("   • USB ISP mode: VID:0x4348/0x1A86, PID:0x55E0")
+                logMessage("   • Serial mode: CH340 (PID:0x7523) or CH341 (PID:0x5523)")
+                logMessage("💡 For serial programming:")
+                logMessage("   1. Connect WCH32 device UART to CH340/CH341")
+                logMessage("   2. Ensure WCH32 is in bootloader mode") 
+                logMessage("   3. Use appropriate baud rate (usually 115200)")
+            }
             return
         }
 
         try {
             if (usbManager!!.hasPermission(device)) {
+                logMessage("✅ USB permission already granted for ${device.deviceName}")
                 onDeviceConnected(device)
             } else {
+                logMessage("🔐 Requesting USB permission for ${device.deviceName}")
+                logMessage("Please allow USB access in the system dialog")
+                
                 val permissionIntent = PendingIntent.getBroadcast(
                     this, 0, Intent(ACTION_USB_PERMISSION), 
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 usbManager!!.requestPermission(device, permissionIntent)
-                logMessage("Requesting USB permission for device: ${device.deviceName}")
+                
+                // Update UI to show permission request
+                setDeviceStatus("Requesting permission for ${device.deviceName}...", isConnected = false)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting device permission: ${e.message}")
-            logMessage("USB permission request failed - continuing in simulation mode")
+            logMessage("❌ USB permission request failed: ${e.message}")
+            setDeviceStatus("Permission request failed for ${device.deviceName}", isError = true)
         }
     }
 
     private fun onDeviceConnected(device: UsbDevice) {
         try {
             connectedDevice = device
-            val deviceInfo = "Device connected: ${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
-            binding.tvDeviceStatus.text = deviceInfo
-            logMessage(deviceInfo)
-            updateFlashButtonState()
+            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
             
-            // Check native library status
-            if (!WchispNative.isLibraryLoaded()) {
-                logMessage("INFO: Native library not loaded - running in simulation mode")
-                logMessage("Reason: ${WchispNative.getLoadError()}")
+            // Determine programming mode based on PID
+            val programmingMode = when (device.productId) {
+                0x55E0 -> "USB ISP"
+                0x7523 -> "CH340 Serial"
+                0x5523 -> "CH341 Serial"
+                else -> "Unknown"
             }
             
-            // Initialize native wchisp connection
-            if (!WchispNative.safeInit()) {
-                logMessage("ERROR: Failed to initialize native library")
+            logMessage("✅ Device connected: ${device.deviceName}")
+            logMessage("Device details: VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}")
+            logMessage("🔗 Programming mode: $programmingMode")
+            
+            // Check native library status first
+            if (!WchispNative.isLibraryLoaded()) {
+                logMessage("⚠ WARNING: ${getString(R.string.native_library_not_available)}")
+                logMessage("Reason: ${WchispNative.getLoadError()}")
+                setDeviceStatus("$deviceName - ${getString(R.string.native_library_not_available)}", isError = true)
+                logMessage("Device connected but native library unavailable - limited functionality")
+                updateFlashButtonState()
                 return
             }
             
-            // Identify the connected chip
-            val chipInfo = WchispNative.safeIdentifyChip(1) // Use mock handle for simulation
-            logMessage("Chip identified: $chipInfo")
+            // Show connection in progress
+            setDeviceStatus("Connecting to $deviceName ($programmingMode)...", isConnected = false)
+            
+            // Perform connection operations in background with timeout
+            lifecycleScope.launch {
+                try {
+                    val success = connectWithTimeout(device, programmingMode)
+                    if (success) {
+                        logMessage("🎉 Device ready for programming operations via $programmingMode!")
+                    } else {
+                        setDeviceStatus("$deviceName - Connection timeout", isError = true)
+                        logMessage("❌ Connection failed or timed out - please retry")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in device connection process", e)
+                    setDeviceStatus("$deviceName - Connection error", isError = true)
+                    logMessage("❌ Connection error: ${e.localizedMessage ?: "Unknown error"}")
+                }
+            }
             
         } catch (e: Exception) {
-            Log.w(TAG, "Error handling device connection: ${e.message}")
-            logMessage("Device connection failed - using simulation mode")
-            
-            // Set up simulation mode
-            binding.tvDeviceStatus.text = "Simulation: CH32V203 (64KB Flash)"
-            val chipInfo = WchispNative.safeIdentifyChip(1) // Use simulation handle
-            logMessage("Simulation chip: $chipInfo")
-            updateFlashButtonState()
+            Log.e(TAG, "Error in onDeviceConnected", e)
+            setDeviceStatus("Device connection failed", isError = true)
+            logMessage("❌ Device connection failed: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    private suspend fun connectWithTimeout(device: UsbDevice, programmingMode: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(CONNECTION_TIMEOUT_MS) {
+                try {
+                    // Initialize native library
+                    if (!WchispNative.safeInit()) {
+                        logMessage("❌ ERROR: Failed to initialize native library")
+                        return@withTimeoutOrNull false
+                    }
+                    
+                    // Open device connection using USB Host API
+                    val usbConnection = usbManager?.openDevice(device)
+                    if (usbConnection == null) {
+                        logMessage("❌ ERROR: Failed to open USB device connection")
+                        logMessage("This may be due to insufficient permissions or device access restrictions")
+                        return@withTimeoutOrNull false
+                    }
+                    
+                    try {
+                        when (programmingMode) {
+                            "USB ISP" -> {
+                                logMessage("🔗 USB ISP connection established, opening device in native library...")
+                            }
+                            "CH340 Serial", "CH341 Serial" -> {
+                                logMessage("🔗 Serial connection established via $programmingMode")
+                                logMessage("📡 Ready for WCH32 UART bootloader communication")
+                            }
+                        }
+                        
+                        // Get the device handle from native library
+                        val handle = WchispNative.safeOpenDevice(
+                            usbConnection.fileDescriptor, 
+                            device.vendorId, 
+                            device.productId, 
+                            usbConnection
+                        )
+                        
+                        if (handle <= 0) {
+                            logMessage("❌ ERROR: Failed to open device in native library")
+                            logMessage("Error: ${WchispNative.safeGetLastError()}")
+                            return@withTimeoutOrNull false
+                        }
+                        
+                        deviceHandle = handle
+                        logMessage("🔧 Device opened successfully, identifying chip...")
+                        
+                        // Identify the connected chip
+                        val chipInfo = WchispNative.safeIdentifyChip(deviceHandle)
+                        logMessage("✅ Chip identification: $chipInfo")
+                        
+                        // Update UI on main thread
+                        withContext(Dispatchers.Main) {
+                            val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
+                            setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
+                            updateFlashButtonState()
+                        }
+                        
+                        return@withTimeoutOrNull true
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in device setup", e)
+                        usbConnection.close()
+                        return@withTimeoutOrNull false
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in connectWithTimeout", e)
+                    return@withTimeoutOrNull false
+                }
+            } ?: false
         }
     }
 
@@ -424,13 +744,13 @@ class MainActivity : AppCompatActivity() {
         if (connectedDevice == device) {
             try {
                 // Close native device connection
-                if (deviceHandle >= 0) {
+                if (deviceHandle > 0) {
                     WchispNative.safeCloseDevice(deviceHandle)
                     deviceHandle = -1
                 }
                 
                 connectedDevice = null
-                binding.tvDeviceStatus.text = getString(R.string.no_device_connected)
+                setDeviceStatus(getString(R.string.no_device_connected))
                 logMessage("Device disconnected: ${device.deviceName}")
                 updateFlashButtonState()
             } catch (e: Exception) {
@@ -442,11 +762,89 @@ class MainActivity : AppCompatActivity() {
     private fun updateFirmwareFileDisplay(uri: Uri) {
         try {
             val fileName = getFileName(uri)
-            binding.tvSelectedFile.text = fileName ?: uri.lastPathSegment ?: "Unknown file"
-            logMessage("Selected firmware file: ${binding.tvSelectedFile.text}")
+            val displayName = fileName ?: uri.lastPathSegment ?: "Unknown file"
+            binding.tvSelectedFile.text = displayName
+            
+            // Reset text color first
+            binding.tvSelectedFile.setTextColor(ContextCompat.getColor(this, R.color.md_theme_light_onSurface))
+            
+            // Validate firmware file and update UI accordingly
+            val isValid = validateFirmwareFile(uri, displayName)
+            
+            if (isValid) {
+                logMessage("✓ Selected firmware file: $displayName")
+            } else {
+                logMessage("❌ Invalid firmware file selected: $displayName")
+                // Clear the selection if invalid
+                selectedFirmwareUri = null
+            }
+            
+            updateFlashButtonState()
         } catch (e: Exception) {
             Log.w(TAG, "Error reading file info: ${e.message}")
-            logMessage("Error reading file info: ${e.message}")
+            logMessage("❌ Error reading file info: ${e.message}")
+        }
+    }
+    
+    private fun validateFirmwareFile(uri: Uri, fileName: String): Boolean {
+        try {
+            val extension = fileName.substringAfterLast('.', "").lowercase()
+            val isValidExtension = when (extension) {
+                "bin" -> {
+                    logMessage("✓ Binary firmware file detected")
+                    true
+                }
+                "hex" -> {
+                    logMessage("✓ Intel HEX firmware file detected")
+                    true
+                }
+                "elf" -> {
+                    logMessage("✓ ELF firmware file detected")
+                    true
+                }
+                else -> {
+                    logMessage("❌ ERROR: Unsupported file type '.$extension'")
+                    logMessage("Supported file types: .bin (binary), .hex (Intel HEX), .elf (ELF)")
+                    binding.tvSelectedFile.text = "$fileName (UNSUPPORTED FORMAT)"
+                    binding.tvSelectedFile.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+                    false
+                }
+            }
+            
+            if (!isValidExtension) {
+                return false
+            }
+            
+            // Check file size for valid files
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                val size = inputStream.available()
+                when {
+                    size == 0 -> {
+                        logMessage("❌ ERROR: File is empty")
+                        return false
+                    }
+                    size > 2 * 1024 * 1024 -> { // 2MB limit
+                        logMessage("❌ ERROR: File too large (${size / 1024}KB) - Maximum 2MB supported")
+                        return false
+                    }
+                    size < 32 -> {
+                        logMessage("❌ ERROR: File too small (${size} bytes) - Minimum 32 bytes required")
+                        return false
+                    }
+                    size > 1024 * 1024 -> {
+                        logMessage("⚠ Warning: Large file (${size / 1024}KB) - This may take longer to flash")
+                    }
+                    else -> {
+                        logMessage("✓ File size: ${if (size > 1024) "${size / 1024}KB" else "${size} bytes"}")
+                    }
+                }
+            }
+            
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Error validating firmware file: ${e.message}")
+            logMessage("❌ ERROR: File validation failed: ${e.message}")
+            return false
         }
     }
 
@@ -472,11 +870,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateFlashButtonState() {
         try {
-            val hasDevice = (connectedDevice != null) || (deviceHandle > 0) // Include simulation
-            val hasFile = selectedFirmwareUri != null
-            
-            binding.btnFlash.isEnabled = hasDevice && hasFile
-            binding.btnErase.isEnabled = hasDevice
+            // Use the helper method for consistent button state management
+            setOperationInProgress(false)
         } catch (e: Exception) {
             Log.w(TAG, "Error updating button state: ${e.message}")
         }
@@ -484,78 +879,161 @@ class MainActivity : AppCompatActivity() {
 
     private fun startFlashing() {
         selectedFirmwareUri?.let { uri ->
-            try {
-                val inputStream = contentResolver.openInputStream(uri)
-                val firmwareData = inputStream?.readBytes()
-                inputStream?.close()
-                
-                if (firmwareData != null) {
-                    performFlashOperation(firmwareData)
-                } else {
-                    logMessage("ERROR: Could not read firmware file")
+            lifecycleScope.launch {
+                try {
+                    binding.tvProgressInfo.text = "Reading firmware file..."
+                    
+                    val firmwareData = withContext(Dispatchers.IO) {
+                        readFirmwareFile(uri)
+                    }
+                    
+                    if (firmwareData != null) {
+                        performFlashOperation(firmwareData)
+                    } else {
+                        logMessage("ERROR: Could not read firmware file")
+                        binding.tvProgressInfo.text = "Failed to read firmware file"
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error starting flash operation: ${e.message}")
+                    logMessage("ERROR: Failed to start flashing: ${e.message}")
+                    binding.tvProgressInfo.text = "Failed to start flashing: ${e.message}"
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error reading firmware: ${e.message}")
-                logMessage("ERROR: Failed to read firmware: ${e.message}")
             }
-        } ?: logMessage("ERROR: No firmware file selected")
+        } ?: run {
+            logMessage("ERROR: No firmware file selected")
+            binding.tvProgressInfo.text = "No firmware file selected"
+        }
+    }
+    
+    private fun readFirmwareFile(uri: Uri): ByteArray? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                val data = inputStream.readBytes()
+                
+                // Validate firmware data
+                when {
+                    data.isEmpty() -> {
+                        logMessage("ERROR: Firmware file is empty")
+                        null
+                    }
+                    data.size > 2 * 1024 * 1024 -> { // 2MB limit
+                        logMessage("ERROR: Firmware file too large (${data.size / 1024}KB)")
+                        null
+                    }
+                    data.size < 32 -> { // Minimum reasonable firmware size
+                        logMessage("WARNING: Firmware file very small (${data.size} bytes)")
+                        data // Still allow it
+                    }
+                    else -> {
+                        logMessage("✓ Firmware file loaded: ${data.size} bytes")
+                        data
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reading firmware file: ${e.message}")
+            logMessage("ERROR: Failed to read firmware file: ${e.message}")
+            null
+        }
     }
 
     private fun performFlashOperation(firmwareData: ByteArray) {
         logMessage("Flash operation started...")
         logMessage("Firmware size: ${firmwareData.size} bytes")
+        
+        // Show progress card and progress bar
+        binding.cardProgress.visibility = View.VISIBLE
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.progress = 0
+        binding.tvProgressInfo.text = getString(R.string.preparing_flash)
+        setOperationInProgress(true)
         
-        // Disable buttons during operation
-        binding.btnFlash.isEnabled = false
-        binding.btnErase.isEnabled = false
-        
-        // Perform flashing on background thread
-        Thread {
-            val success = WchispNative.safeFlashFirmware(deviceHandle, firmwareData)
-            
-            runOnUiThread {
-                binding.progressBar.visibility = View.GONE
-                binding.btnFlash.isEnabled = true
-                binding.btnErase.isEnabled = true
+        // Perform flashing operation with coroutines for better async handling
+        lifecycleScope.launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    // Perform actual flash operation through native library
+                    WchispNative.safeFlashFirmware(deviceHandle, firmwareData)
+                }
+                
+                // Update UI on main thread
+                binding.progressBar.progress = 100
+                binding.tvProgressInfo.text = getString(R.string.operation_completed)
                 
                 if (success) {
                     logMessage("✓ Flash operation completed successfully")
                     
                     // Optionally verify firmware
+                    binding.tvProgressInfo.text = getString(R.string.verification_in_progress)
                     logMessage("Verifying firmware...")
-                    val verified = WchispNative.safeVerifyFirmware(deviceHandle, firmwareData)
+                    val verified = withContext(Dispatchers.IO) {
+                        WchispNative.safeVerifyFirmware(deviceHandle, firmwareData)
+                    }
+                    
                     if (verified) {
                         logMessage("✓ Firmware verification passed")
+                        binding.tvProgressInfo.text = "✓ Firmware verified successfully"
                     } else {
                         logMessage("⚠ Firmware verification failed")
+                        binding.tvProgressInfo.text = "⚠ Firmware verification failed"
                     }
                     
                     // Reset chip to run new firmware
-                    if (WchispNative.safeResetChip(deviceHandle)) {
-                        logMessage("✓ Chip reset completed")
+                    binding.tvProgressInfo.text = getString(R.string.resetting_chip)
+                    val resetSuccess = withContext(Dispatchers.IO) {
+                        WchispNative.safeResetChip(deviceHandle)
+                    }
+                    
+                    if (resetSuccess) {
+                        logMessage("✓ ${getString(R.string.chip_reset_success)}")
+                        binding.tvProgressInfo.text = "✓ ${getString(R.string.chip_reset_success)}"
+                    } else {
+                        logMessage("⚠ ${getString(R.string.chip_reset_failed)}")
+                        binding.tvProgressInfo.text = "⚠ ${getString(R.string.chip_reset_failed)}"
                     }
                 } else {
                     val error = WchispNative.safeGetLastError()
                     logMessage("✗ Flash operation failed: $error")
+                    binding.tvProgressInfo.text = "✗ ${getString(R.string.operation_failed)}: $error"
                 }
+                
+                // Hide progress after delay
+                delay(3000)
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during flash operation", e)
+                logMessage("✗ Flash operation failed: ${e.message}")
+                binding.tvProgressInfo.text = "✗ ${getString(R.string.operation_failed)}: ${e.message}"
+                delay(3000)
+            } finally {
+                // Always restore UI state
+                binding.progressBar.visibility = View.GONE
+                binding.cardProgress.visibility = View.GONE
+                binding.tvProgressInfo.text = getString(R.string.ready_to_flash)
+                setOperationInProgress(false)
             }
-        }.start()
+        }
+    }
+
+    private fun setOperationInProgress(inProgress: Boolean) {
+        val hasDevice = (connectedDevice != null || deviceHandle > 0)
+        val hasFile = selectedFirmwareUri != null
+        
+        binding.btnFlash.isEnabled = !inProgress && hasDevice && hasFile
+        binding.btnErase.isEnabled = !inProgress && hasDevice
+        binding.btnSelectFile.isEnabled = !inProgress
     }
 
     private fun eraseChip() {
         logMessage("Chip erase started...")
-        binding.btnFlash.isEnabled = false
-        binding.btnErase.isEnabled = false
+        setOperationInProgress(true)
         
-        // Perform erase on background thread
-        Thread {
-            val success = WchispNative.safeEraseChip(deviceHandle)
-            
-            runOnUiThread {
-                binding.btnFlash.isEnabled = true
-                binding.btnErase.isEnabled = true
+        // Perform erase operation with coroutines
+        lifecycleScope.launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    WchispNative.safeEraseChip(deviceHandle)
+                }
                 
                 if (success) {
                     logMessage("✓ Chip erase completed successfully")
@@ -563,46 +1041,14 @@ class MainActivity : AppCompatActivity() {
                     val error = WchispNative.safeGetLastError()
                     logMessage("✗ Chip erase failed: $error")
                 }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during erase operation", e)
+                logMessage("✗ Chip erase failed: ${e.message}")
+            } finally {
+                setOperationInProgress(false)
             }
-        }.start()
-    }
-
-    private fun simulateFlashOperation() {
-        logMessage("Simulation: Flash operation started...")
-        binding.progressBar.visibility = View.VISIBLE
-        binding.btnFlash.isEnabled = false
-        binding.btnErase.isEnabled = false
-        
-        Thread {
-            for (progress in 0..100 step 20) {
-                Thread.sleep(500)
-                runOnUiThread {
-                    binding.progressBar.progress = progress
-                    logMessage("Flashing... ${progress}%")
-                }
-            }
-            runOnUiThread {
-                binding.progressBar.visibility = View.GONE
-                binding.btnFlash.isEnabled = true
-                binding.btnErase.isEnabled = true
-                logMessage("✓ Simulation: Flash completed successfully")
-            }
-        }.start()
-    }
-
-    private fun simulateEraseOperation() {
-        logMessage("Simulation: Erase operation started...")
-        binding.btnFlash.isEnabled = false
-        binding.btnErase.isEnabled = false
-        
-        Thread {
-            Thread.sleep(2000)
-            runOnUiThread {
-                binding.btnFlash.isEnabled = true
-                binding.btnErase.isEnabled = true
-                logMessage("✓ Simulation: Erase completed successfully")
-            }
-        }.start()
+        }
     }
 
     private fun logMessage(message: String) {

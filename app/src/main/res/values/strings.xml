@@ -3,9 +3,12 @@
     <string name="app_name">WCH32 Flasher</string>
     <string name="select_firmware">Select Firmware File</string>
     <string name="flash_firmware">Flash Firmware</string>
-    <string name="device_info">Device Info</string>
+    <string name="device_info">Device Information</string>
+    <string name="firmware_file">Firmware File</string>
     <string name="flash_log">Flash Log</string>
+    <string name="operation_progress">Operation Progress</string>
     <string name="no_device_connected">No WCH device connected</string>
+    <string name="no_file_selected">No file selected</string>
     <string name="device_connected">Device connected: %1$s</string>
     <string name="flash_progress">Flashing... %1$d%%</string>
     <string name="flash_success">Flash completed successfully</string>
@@ -15,4 +18,45 @@
     <string name="reset_device">Reset Device</string>
     <string name="erase_chip">Erase Chip</string>
     <string name="verify_firmware">Verify</string>
+    <string name="app_ready">Ready. Connect a WCH device to begin.</string>
+    
+    <!-- Enhanced user feedback strings -->
+    <string name="simulation_mode_info">Running in simulation mode - no hardware required</string>
+    <string name="operation_in_progress">Operation in progress, please wait…</string>
+    <string name="firmware_validation_failed">Firmware file validation failed</string>
+    <string name="large_firmware_warning">Large firmware file detected - this may take longer to flash</string>
+    <string name="small_firmware_warning">Very small firmware file - please verify this is correct</string>
+    <string name="unsupported_file_format">Unsupported file format - use .bin, .hex, or .elf files</string>
+    <string name="chip_reset_success">Chip reset completed - new firmware is running</string>
+    <string name="chip_reset_failed">Chip reset failed - manual reset may be required</string>
+    <string name="verification_in_progress">Verifying firmware integrity…</string>
+    <string name="ready_to_flash">Ready to flash - select firmware and connect device</string>
+    
+    <!-- Status messages -->
+    <string name="status_ready">Ready. Connect a WCH device to begin.</string>
+    <string name="native_library_loaded">Native WCH ISP library loaded successfully</string>
+    <string name="native_library_not_available">Native library not available</string>
+    <string name="device_connection_failed">Device connection failed</string>
+    <string name="usb_permission_denied">USB permission denied</string>
+    <string name="unsupported_device">Unsupported device</string>
+    
+    <!-- File validation messages -->
+    <string name="file_too_large">File too large (maximum 2MB supported)</string>
+    <string name="file_empty">File is empty</string>
+    <string name="file_read_error">Error reading file</string>
+    
+    <!-- ISP mode guidance -->
+    <string name="isp_mode_required">WCH32 device must be in ISP/bootloader mode</string>
+    <string name="isp_mode_instructions">Hold BOOT button while powering on, or connect BOOT pin to VCC during reset</string>
+    <string name="ch340_detected">CH340 USB-serial converter detected (not programmable)</string>
+    <string name="serial_converter_info">USB-serial converters cannot be programmed - you need a WCH32 microcontroller</string>
+    <string name="wch32_examples">Examples: CH32V003, CH32V203, CH32F103</string>
+    
+    <!-- Progress messages -->
+    <string name="preparing_flash">Preparing to flash firmware…</string>
+    <string name="flashing_progress">Flashing firmware… %1$d%%</string>
+    <string name="verifying_firmware">Verifying firmware…</string>
+    <string name="resetting_chip">Resetting chip…</string>
+    <string name="operation_completed">Operation completed successfully</string>
+    <string name="operation_failed">Operation failed</string>
 </resources>

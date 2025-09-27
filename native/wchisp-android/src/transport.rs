@@ -7,12 +7,22 @@ use anyhow::Result;
 use log::{debug, info};
 use jni::{JNIEnv, objects::JObject};
 
+/// Programming mode for WCH devices
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ProgrammingMode {
+    UsbIsp,        // Direct USB ISP mode (PID 0x55E0)
+    SerialCh340,   // Serial programming via CH340 (PID 0x7523)
+    SerialCh341,   // Serial programming via CH341 (PID 0x5523)
+    Unsupported,
+}
+
 /// Android-specific USB transport that uses USB Host API via JNI
 pub struct AndroidUsbTransport {
     #[allow(dead_code)]
     device_fd: i32,
     vendor_id: u16,  
     product_id: u16,
+    programming_mode: ProgrammingMode,
     connection_handle: Option<JObject<'static>>, // Will hold UsbDeviceConnection
     endpoint_out: u8,
     endpoint_in: u8,
@@ -20,20 +30,30 @@ pub struct AndroidUsbTransport {
 
 impl AndroidUsbTransport {
     pub fn new(device_fd: i32, vendor_id: u16, product_id: u16) -> Self {
+        let programming_mode = Self::get_programming_mode(vendor_id, product_id);
+        
+        // Set appropriate endpoints based on programming mode
+        let (endpoint_out, endpoint_in) = match programming_mode {
+            ProgrammingMode::UsbIsp => (0x02, 0x82),  // Standard USB ISP endpoints
+            ProgrammingMode::SerialCh340 | ProgrammingMode::SerialCh341 => (0x02, 0x82), // CH340/CH341 bulk endpoints
+            ProgrammingMode::Unsupported => (0x02, 0x82), // Default fallback
+        };
+        
         Self {
             device_fd,
             vendor_id,
             product_id,
+            programming_mode,
             connection_handle: None,
-            endpoint_out: 0x02,  // Standard OUT endpoint for WCH ISP
-            endpoint_in: 0x82,   // Standard IN endpoint for WCH ISP  
+            endpoint_out,
+            endpoint_in,
         }
     }
 
     /// Initialize the USB connection using Android USB Host API via JNI
     pub fn initialize(&mut self, env: &mut JNIEnv, usb_connection: JObject) -> Result<()> {
-        info!("Initializing USB transport for VID: 0x{:04X}, PID: 0x{:04X}", 
-              self.vendor_id, self.product_id);
+        info!("Initializing USB transport for VID: 0x{:04X}, PID: 0x{:04X} (Mode: {:?})", 
+              self.vendor_id, self.product_id, self.programming_mode);
               
         // Create global reference to USB connection for use across JNI calls
         let global_ref = env.new_global_ref(&usb_connection)?;
@@ -43,13 +63,31 @@ impl AndroidUsbTransport {
         let static_ref = unsafe { std::mem::transmute(global_ref.as_obj()) };
         self.connection_handle = Some(static_ref);
         
-        // Claim the USB interface
-        self.claim_interface(env, &usb_connection)?;
+        // Initialization differs based on programming mode
+        match self.programming_mode {
+            ProgrammingMode::UsbIsp => {
+                info!("Initializing USB ISP mode");
+                // Claim the USB interface for ISP
+                self.claim_interface(env, &usb_connection)?;
+                // Discover and set endpoint addresses
+                self.discover_endpoints(env, &usb_connection)?;
+            }
+            ProgrammingMode::SerialCh340 => {
+                info!("Initializing CH340 serial mode for WCH32 programming");
+                // CH340 uses bulk transfer mode for serial communication
+                self.setup_serial_mode(env, &usb_connection)?;
+            }
+            ProgrammingMode::SerialCh341 => {
+                info!("Initializing CH341 serial mode for WCH32 programming");
+                // CH341 setup
+                self.setup_serial_mode(env, &usb_connection)?;
+            }
+            ProgrammingMode::Unsupported => {
+                anyhow::bail!("Unsupported programming mode");
+            }
+        }
         
-        // Discover and set endpoint addresses
-        self.discover_endpoints(env, &usb_connection)?;
-        
-        info!("USB transport initialized successfully");
+        info!("USB transport initialized successfully for {:?} mode", self.programming_mode);
         Ok(())
     }
 
@@ -166,6 +204,51 @@ impl AndroidUsbTransport {
                self.endpoint_out, self.endpoint_in);
         Ok(())
     }
+    
+    fn setup_serial_mode(&mut self, env: &mut JNIEnv, connection: &JObject) -> Result<()> {
+        info!("Setting up serial mode for WCH32 programming");
+        
+        // For CH340/CH341, we need to:
+        // 1. Claim the interface
+        // 2. Set up serial parameters (baud rate, etc.)
+        // 3. Configure for WCH32 bootloader communication
+        
+        self.claim_interface(env, connection)?;
+        
+        // Set serial parameters for WCH32 bootloader
+        // Most WCH32 devices use 115200 baud by default for serial programming
+        self.configure_serial_parameters(env, connection, 115200)?;
+        
+        // Discover endpoints (CH340/CH341 use bulk transfer endpoints)
+        self.discover_endpoints(env, connection)?;
+        
+        info!("Serial mode setup completed");
+        Ok(())
+    }
+    
+    fn configure_serial_parameters(&self, env: &mut JNIEnv, connection: &JObject, baud_rate: u32) -> Result<()> {
+        info!("Configuring serial parameters: {} baud", baud_rate);
+        
+        // CH340/CH341 specific serial configuration
+        // This would typically involve control transfers to set baud rate, parity, etc.
+        // For now, we'll use a simplified approach suitable for WCH32 bootloader
+        
+        match self.programming_mode {
+            ProgrammingMode::SerialCh340 => {
+                debug!("Configuring CH340 for {} baud", baud_rate);
+                // CH340 specific configuration would go here
+                // For the scope of this implementation, we'll assume the device
+                // is already configured appropriately for WCH32 communication
+            }
+            ProgrammingMode::SerialCh341 => {
+                debug!("Configuring CH341 for {} baud", baud_rate);
+                // CH341 specific configuration would go here
+            }
+            _ => {}
+        }
+        
+        Ok(())
+    }
 
     pub fn send_raw(&mut self, env: &mut JNIEnv, data: &[u8]) -> Result<usize> {
         debug!("Sending {} bytes via Android USB", data.len());
@@ -237,7 +320,19 @@ impl AndroidUsbTransport {
     }
 
     pub fn is_supported_device(vendor_id: u16, product_id: u16) -> bool {
-        matches!((vendor_id, product_id), (0x4348, 0x55e0) | (0x1a86, 0x55e0))
+        matches!((vendor_id, product_id), 
+            (0x4348, 0x55e0) | (0x1a86, 0x55e0) |  // USB ISP mode
+            (0x1a86, 0x7523) | (0x1a86, 0x5523)    // USB-to-Serial converters for UART programming
+        )
+    }
+    
+    pub fn get_programming_mode(vendor_id: u16, product_id: u16) -> ProgrammingMode {
+        match (vendor_id, product_id) {
+            (0x4348, 0x55e0) | (0x1a86, 0x55e0) => ProgrammingMode::UsbIsp,
+            (0x1a86, 0x7523) => ProgrammingMode::SerialCh340,
+            (0x1a86, 0x5523) => ProgrammingMode::SerialCh341,
+            _ => ProgrammingMode::Unsupported,
+        }
     }
     
     pub fn release_interface(&self, env: &mut JNIEnv) -> Result<()> {

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- WCH ISP devices filter as per wchisp documentation -->
-    <!-- VID: 0x4348 (WCH) and 0x1a86 (QinHeng Electronics), PID: 0x55e0 -->
-    <usb-device vendor-id="17224" product-id="21984" /> <!-- 0x4348:0x55e0 WCH -->
-    <usb-device vendor-id="6790" product-id="21984" />  <!-- 0x1a86:0x55e0 QinHeng -->
+    <!-- USB ISP mode: VID: 0x4348 (WCH) and 0x1a86 (QinHeng Electronics), PID: 0x55e0 -->
+    <usb-device vendor-id="17224" product-id="21984" /> <!-- 0x4348:0x55e0 WCH USB ISP -->
+    <usb-device vendor-id="6790" product-id="21984" />  <!-- 0x1a86:0x55e0 QinHeng USB ISP -->
+    
+    <!-- Serial programming mode: CH340/CH341 USB-to-serial converters -->
+    <usb-device vendor-id="6790" product-id="29987" />  <!-- 0x1a86:0x7523 CH340 Serial -->
+    <usb-device vendor-id="6790" product-id="21795" />  <!-- 0x1a86:0x5523 CH341 Serial -->
 </resources>

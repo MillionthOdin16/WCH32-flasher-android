@@ -39,8 +39,10 @@ class MainActivity : AppCompatActivity() {
         
         // WCH ISP device VID/PID combinations (from wchisp source)
         private val SUPPORTED_DEVICES = setOf(
-            Pair(0x4348, 0x55e0), // WCH
-            Pair(0x1a86, 0x55e0)  // QinHeng Electronics
+            Pair(0x4348, 0x55e0), // WCH - USB ISP mode
+            Pair(0x1a86, 0x55e0), // QinHeng Electronics - USB ISP mode
+            Pair(0x1a86, 0x7523), // CH340 - Serial programming mode
+            Pair(0x1a86, 0x5523)  // CH341 - Serial programming mode
         )
     }
 
@@ -433,21 +435,29 @@ class MainActivity : AppCompatActivity() {
                     when (device.productId) {
                         0x55E0 -> {
                             wchDevicesFound++
-                            logMessage("✅ WCH32 ISP device found: ${device.deviceName}")
+                            logMessage("✅ WCH32 USB ISP device found: ${device.deviceName}")
                             checkAndRequestDevice(device)
                             foundDevice = true
                             break // Handle first supported device found
                         }
                         0x7523 -> {
-                            serialDevicesFound++
-                            logMessage("ℹ️ CH340 USB-serial converter detected (not programmable)")
+                            wchDevicesFound++
+                            logMessage("✅ CH340 USB-serial converter found: ${device.deviceName}")
+                            logMessage("🔗 Ready for WCH32 serial programming mode")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break
                         }
                         0x5523 -> {
-                            serialDevicesFound++
-                            logMessage("ℹ️ CH341 USB-serial converter detected (not programmable)")
+                            wchDevicesFound++
+                            logMessage("✅ CH341 USB-serial converter found: ${device.deviceName}")
+                            logMessage("🔗 Ready for WCH32 serial programming mode")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break
                         }
                         else -> {
-                            logMessage("ℹ️ WCH device found but not in ISP mode (PID:0x${String.format("%04X", device.productId)})")
+                            logMessage("ℹ️ WCH device found but not in supported programming mode (PID:0x${String.format("%04X", device.productId)})")
                         }
                     }
                 } else if (isSupportedDevice(device)) {
@@ -502,27 +512,28 @@ class MainActivity : AppCompatActivity() {
                 // Provide specific guidance based on the device type
                 when (device.productId) {
                     0x7523 -> {
-                        logMessage("ℹ️ This is a CH340 USB-to-serial converter")
-                        logMessage("ℹ️ CH340 devices are NOT WCH32 microcontrollers and cannot be programmed via ISP")
-                        logMessage("ℹ️ You need a WCH32 microcontroller (e.g., CH32V003, CH32V203, CH32F103)")
+                        logMessage("❌ CH340 device found but not supported in this configuration")
+                        logMessage("💡 Note: CH340 serial programming is now supported!")
+                        logMessage("💡 Make sure your WCH32 device is connected to the CH340 via UART")
+                        logMessage("💡 Device should be in bootloader mode for serial programming")
                     }
                     0x5523 -> {
-                        logMessage("ℹ️ This appears to be a CH341 USB-to-serial converter")
-                        logMessage("ℹ️ CH341 devices are NOT WCH32 microcontrollers and cannot be programmed via ISP")
+                        logMessage("❌ CH341 device found but not supported in this configuration")
+                        logMessage("💡 Note: CH341 serial programming is now supported!")
+                        logMessage("💡 Make sure your WCH32 device is connected to the CH341 via UART")
                     }
                     else -> {
-                        logMessage("ℹ️ This device is not a WCH32 microcontroller in ISP mode")
+                        logMessage("ℹ️ This device is not a supported WCH32 programming interface")
                     }
                 }
                 
-                logMessage("🎯 WCH32 Flasher supports:")
-                logMessage("   • WCH32 microcontrollers in ISP/bootloader mode")
-                logMessage("   • VID: 0x4348 (WCH) or 0x1A86 (QinHeng)")
-                logMessage("   • PID: 0x55E0 (ISP mode only)")
-                logMessage("💡 To use ISP mode:")
-                logMessage("   1. Hold BOOT button while powering on your WCH32 device")
-                logMessage("   2. Or connect BOOT pin to VCC during reset")
-                logMessage("   3. The device should appear as PID:0x55E0 when in ISP mode")
+                logMessage("🎯 WCH32 Flasher now supports:")
+                logMessage("   • USB ISP mode: VID:0x4348/0x1A86, PID:0x55E0")
+                logMessage("   • Serial mode: CH340 (PID:0x7523) or CH341 (PID:0x5523)")
+                logMessage("💡 For serial programming:")
+                logMessage("   1. Connect WCH32 device UART to CH340/CH341")
+                logMessage("   2. Ensure WCH32 is in bootloader mode") 
+                logMessage("   3. Use appropriate baud rate (usually 115200)")
             }
             return
         }
@@ -555,8 +566,18 @@ class MainActivity : AppCompatActivity() {
         try {
             connectedDevice = device
             val deviceName = "${device.deviceName} (VID:${String.format("%04X", device.vendorId)}, PID:${String.format("%04X", device.productId)})"
+            
+            // Determine programming mode based on PID
+            val programmingMode = when (device.productId) {
+                0x55E0 -> "USB ISP"
+                0x7523 -> "CH340 Serial"
+                0x5523 -> "CH341 Serial"
+                else -> "Unknown"
+            }
+            
             logMessage("✅ Device connected: ${device.deviceName}")
             logMessage("Device details: VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}")
+            logMessage("🔗 Programming mode: $programmingMode")
             
             // Check native library status first
             if (!WchispNative.isLibraryLoaded()) {
@@ -569,7 +590,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             // Show connection in progress
-            setDeviceStatus("Connecting to $deviceName...", isConnected = false)
+            setDeviceStatus("Connecting to $deviceName ($programmingMode)...", isConnected = false)
             
             // Initialize native wchisp connection
             if (!WchispNative.safeInit()) {
@@ -587,7 +608,15 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             
-            logMessage("🔗 USB connection established, opening device in native library...")
+            when (programmingMode) {
+                "USB ISP" -> {
+                    logMessage("🔗 USB ISP connection established, opening device in native library...")
+                }
+                "CH340 Serial", "CH341 Serial" -> {
+                    logMessage("🔗 Serial connection established via $programmingMode")
+                    logMessage("📡 Ready for WCH32 UART bootloader communication")
+                }
+            }
             
             // Get the device handle from native library
             deviceHandle = WchispNative.safeOpenDevice(
@@ -613,7 +642,7 @@ class MainActivity : AppCompatActivity() {
             
             // Update device status with chip info - successful connection
             setDeviceStatus("$deviceName - $chipInfo", isConnected = true)
-            logMessage("🎉 Device ready for programming operations!")
+            logMessage("🎉 Device ready for programming operations via $programmingMode!")
             updateFlashButtonState()
             
         } catch (e: Exception) {

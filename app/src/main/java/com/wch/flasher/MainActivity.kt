@@ -28,7 +28,19 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var usbManager: UsbManager? = null
-    private var deviceHandle: Int = -1
+    private var deviceHandle: Int = INVALID_HANDLE
+        get() = field.takeIf { it != INVALID_HANDLE }
+        set(value) {
+            if (field != INVALID_HANDLE && field != value) {
+                // Clean up previous handle
+                try {
+                    WchispNative.safeCloseDevice(field)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing previous device handle: ${e.message}")
+                }
+            }
+            field = value
+        }
     private var connectedDevice: UsbDevice? = null
     private var selectedFirmwareUri: Uri? = null
     private var receiverRegistered = false
@@ -243,10 +255,29 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         try {
+            // Clean up device handle
+            safeCloseDevice()
+            
             super.onDestroy()
             safeUnregisterReceiver()
         } catch (e: Exception) {
             Log.w(TAG, "Error in onDestroy: ${e.message}")
+        }
+    }
+    
+    private fun safeCloseDevice() {
+        deviceHandle?.let { handle ->
+            try {
+                WchispNative.safeCloseDevice(handle)
+                logMessage("🔌 Device connection closed")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing device: ${e.message}")
+            } finally {
+                deviceHandle = INVALID_HANDLE
+                connectedDevice = null
+                setDeviceStatus(getString(R.string.status_ready), isConnected = false)
+                updateFlashButtonState()
+            }
         }
     }
 

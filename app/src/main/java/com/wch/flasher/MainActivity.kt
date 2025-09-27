@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var usbManager: UsbManager? = null
     private var deviceHandle: Int = INVALID_HANDLE
-        get() = field.takeIf { it != INVALID_HANDLE }
+        get() = field.takeIf { it != INVALID_HANDLE } ?: INVALID_HANDLE
         set(value) {
             if (field != INVALID_HANDLE && field != value) {
                 // Clean up previous handle
@@ -48,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "WCH32Flasher"
         private const val ACTION_USB_PERMISSION = "com.wch.flasher.USB_PERMISSION"
+        private const val CONNECTION_TIMEOUT_MS = 30000L // 30 seconds
+        private const val INVALID_HANDLE = -1
         
         // WCH ISP device VID/PID combinations (from wchisp source)
         private val SUPPORTED_DEVICES = setOf(
@@ -266,9 +268,9 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun safeCloseDevice() {
-        deviceHandle?.let { handle ->
+        if (deviceHandle != INVALID_HANDLE) {
             try {
-                WchispNative.safeCloseDevice(handle)
+                WchispNative.safeCloseDevice(deviceHandle)
                 logMessage("🔌 Device connection closed")
             } catch (e: Exception) {
                 Log.w(TAG, "Error closing device: ${e.message}")

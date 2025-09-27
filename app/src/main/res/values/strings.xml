@@ -33,6 +33,7 @@
     <string name="ready_to_flash">Ready to flash - select firmware and connect device</string>
     
     <!-- Status messages -->
+    <string name="status_ready">Ready. Connect a WCH device to begin.</string>
     <string name="native_library_loaded">Native WCH ISP library loaded successfully</string>
     <string name="native_library_not_available">Native library not available</string>
     <string name="device_connection_failed">Device connection failed</string>

@@ -414,21 +414,44 @@ class MainActivity : AppCompatActivity() {
             if (devices.isEmpty()) {
                 Log.d(TAG, "No USB devices connected")
                 logMessage("No USB devices detected")
-                logMessage("Connect a WCH device to begin programming")
+                logMessage("Connect a WCH32 device in ISP mode to begin programming")
                 return
             }
             
-            logMessage("Found ${devices.size} USB device(s), checking for WCH devices...")
+            logMessage("Found ${devices.size} USB device(s), checking for WCH32 ISP devices...")
             
             var foundDevice = false
-            var supportedDevicesFound = 0
+            var wchDevicesFound = 0
+            var serialDevicesFound = 0
             
             for (device in devices.values) {
                 val deviceInfo = "VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}"
                 logMessage("📱 USB Device: ${device.deviceName} ($deviceInfo)")
                 
-                if (isSupportedDevice(device)) {
-                    supportedDevicesFound++
+                // Check if it's a WCH-related device
+                if (device.vendorId == 0x1A86 || device.vendorId == 0x4348) {
+                    when (device.productId) {
+                        0x55E0 -> {
+                            wchDevicesFound++
+                            logMessage("✅ WCH32 ISP device found: ${device.deviceName}")
+                            checkAndRequestDevice(device)
+                            foundDevice = true
+                            break // Handle first supported device found
+                        }
+                        0x7523 -> {
+                            serialDevicesFound++
+                            logMessage("ℹ️ CH340 USB-serial converter detected (not programmable)")
+                        }
+                        0x5523 -> {
+                            serialDevicesFound++
+                            logMessage("ℹ️ CH341 USB-serial converter detected (not programmable)")
+                        }
+                        else -> {
+                            logMessage("ℹ️ WCH device found but not in ISP mode (PID:0x${String.format("%04X", device.productId)})")
+                        }
+                    }
+                } else if (isSupportedDevice(device)) {
+                    wchDevicesFound++
                     logMessage("✅ Supported WCH device found: ${device.deviceName}")
                     checkAndRequestDevice(device)
                     foundDevice = true
@@ -437,14 +460,23 @@ class MainActivity : AppCompatActivity() {
             }
             
             if (!foundDevice) {
-                if (supportedDevicesFound == 0) {
+                if (wchDevicesFound == 0 && serialDevicesFound > 0) {
+                    logMessage("💡 Found ${serialDevicesFound} WCH USB-serial device(s), but no WCH32 microcontrollers")
+                    logMessage("💡 To program WCH32 microcontrollers:")
+                    logMessage("   1. Put your WCH32 device into ISP/bootloader mode")
+                    logMessage("   2. Hold BOOT button while powering on")
+                    logMessage("   3. Or connect BOOT pin to VCC during reset")
+                    logMessage("   4. Device should appear as PID:0x55E0 when ready")
+                } else if (wchDevicesFound == 0) {
                     Log.d(TAG, "No supported WCH devices found")
-                    logMessage("❌ No supported WCH devices found")
-                    logMessage("WCH32 Flasher supports devices with:")
-                    logMessage("• VID: 0x4348 (WCH) or 0x1A86 (QinHeng), PID: 0x55E0")
-                    logMessage("Please connect a compatible WCH32 device")
+                    logMessage("❌ No WCH32 ISP devices found")
+                    logMessage("🎯 WCH32 Flasher requires:")
+                    logMessage("   • WCH32 microcontrollers (CH32V003, CH32V203, CH32F103, etc.)")
+                    logMessage("   • Device must be in ISP/bootloader mode (PID:0x55E0)")
+                    logMessage("   • VID: 0x4348 (WCH) or 0x1A86 (QinHeng)")
+                    logMessage("💡 Make sure your device is in ISP mode before connecting")
                 } else {
-                    Log.d(TAG, "Found $supportedDevicesFound supported device(s) but none connected")
+                    Log.d(TAG, "Found $wchDevicesFound WCH device(s) but none in ISP mode")
                 }
             }
         } catch (e: Exception) {
@@ -462,8 +494,35 @@ class MainActivity : AppCompatActivity() {
     private fun checkAndRequestDevice(device: UsbDevice) {
         if (!isSupportedDevice(device) || usbManager == null) {
             if (!isSupportedDevice(device)) {
-                logMessage("❌ Unsupported device: VID:0x${String.format("%04X", device.vendorId)}, PID:0x${String.format("%04X", device.productId)}")
-                logMessage("WCH32 Flasher supports: VID:0x4348 or 0x1A86, PID:0x55E0")
+                val deviceVid = String.format("0x%04X", device.vendorId)
+                val devicePid = String.format("0x%04X", device.productId)
+                
+                logMessage("❌ Unsupported device: VID:$deviceVid, PID:$devicePid")
+                
+                // Provide specific guidance based on the device type
+                when (device.productId) {
+                    0x7523 -> {
+                        logMessage("ℹ️ This is a CH340 USB-to-serial converter")
+                        logMessage("ℹ️ CH340 devices are NOT WCH32 microcontrollers and cannot be programmed via ISP")
+                        logMessage("ℹ️ You need a WCH32 microcontroller (e.g., CH32V003, CH32V203, CH32F103)")
+                    }
+                    0x5523 -> {
+                        logMessage("ℹ️ This appears to be a CH341 USB-to-serial converter")
+                        logMessage("ℹ️ CH341 devices are NOT WCH32 microcontrollers and cannot be programmed via ISP")
+                    }
+                    else -> {
+                        logMessage("ℹ️ This device is not a WCH32 microcontroller in ISP mode")
+                    }
+                }
+                
+                logMessage("🎯 WCH32 Flasher supports:")
+                logMessage("   • WCH32 microcontrollers in ISP/bootloader mode")
+                logMessage("   • VID: 0x4348 (WCH) or 0x1A86 (QinHeng)")
+                logMessage("   • PID: 0x55E0 (ISP mode only)")
+                logMessage("💡 To use ISP mode:")
+                logMessage("   1. Hold BOOT button while powering on your WCH32 device")
+                logMessage("   2. Or connect BOOT pin to VCC during reset")
+                logMessage("   3. The device should appear as PID:0x55E0 when in ISP mode")
             }
             return
         }

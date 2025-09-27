@@ -44,6 +44,13 @@
     <string name="file_empty">File is empty</string>
     <string name="file_read_error">Error reading file</string>
     
+    <!-- ISP mode guidance -->
+    <string name="isp_mode_required">WCH32 device must be in ISP/bootloader mode</string>
+    <string name="isp_mode_instructions">Hold BOOT button while powering on, or connect BOOT pin to VCC during reset</string>
+    <string name="ch340_detected">CH340 USB-serial converter detected (not programmable)</string>
+    <string name="serial_converter_info">USB-serial converters cannot be programmed - you need a WCH32 microcontroller</string>
+    <string name="wch32_examples">Examples: CH32V003, CH32V203, CH32F103</string>
+    
     <!-- Progress messages -->
     <string name="preparing_flash">Preparing to flash firmware…</string>
     <string name="flashing_progress">Flashing firmware… %1$d%%</string>
